@@ -1,14 +1,14 @@
 import { boolean, integer, pgTable, timestamp, uuid } from "drizzle-orm/pg-core";
 import { users } from "./user";
-import { TimeControl } from "./game";
 import { relations } from "drizzle-orm";
+import { timeControlEnum } from "./enums";
 
 export const matchMakingQueues = pgTable("matchMakingQueues", {
     id: uuid("id").defaultRandom().primaryKey(),
     userId: uuid("user_id").unique().references(() => users.id, { onDelete: 'cascade' }).notNull(),
 
     // metadata
-    timeControl: TimeControl().notNull(),
+    timeControl: timeControlEnum().notNull(),
     timeLimit: integer("time_limit").notNull(),
     increment: integer("increment").default(0).notNull(),
     ratingMin: integer("rating_min").notNull(),

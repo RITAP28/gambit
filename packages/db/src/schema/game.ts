@@ -2,11 +2,7 @@ import { boolean, integer, pgEnum, pgTable, text, timestamp, uuid } from "drizzl
 import { users } from "./user";
 import { tournaments } from "./tournament";
 import { relations } from "drizzle-orm";
-
-export const TimeControl = pgEnum("timeControlEnum", ["bullet", "blitz", "rapid", "classical", "daily"]);
-export const GameStatus = pgEnum("gameStatusEnum", ["waiting", "in_progress", "completed", "abandoned", "aborted"]);
-export const GameResult = pgEnum("gameResultEnum", ["white_win", "black_win", "draw"]);
-export const Termination = pgEnum("termination", ["checkmate", "resignation", "timeout", "stalemate", "insufficient_material", "threefold_repetition", "fifty_move_rule", "agreement", "abondonment"]);
+import { timeControlEnum, gameStatusEnum, terminationEnum } from "./enums";
 
 export const games = pgTable("games", {
     // IDs related to the game
@@ -19,12 +15,12 @@ export const games = pgTable("games", {
         .references(() => users.id, { onDelete: 'cascade' }),
 
     // metadata
-    timeControl: TimeControl().notNull(),
+    timeControl: timeControlEnum().notNull(),
     timeLimitSecs: integer("time_limit_secs").notNull(),
     incrementSecs: integer("increment_secs").default(0),
-    status: GameStatus().notNull(),
+    status: gameStatusEnum().notNull(),
     winner: text("winner"),
-    termination: Termination(),
+    termination: terminationEnum(),
     initialFen: text("initial_fen"),
     currentFen: text("current_fen"),
     pgn: text("pgn"),

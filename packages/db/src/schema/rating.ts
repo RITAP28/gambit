@@ -1,7 +1,7 @@
 import { integer, pgTable, timestamp, unique, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { users } from "./user";
-import { TimeControl } from "./game";
 import { relations } from "drizzle-orm";
+import { timeControlEnum } from "./enums";
 
 export const ratings = pgTable("ratings", {
     // related IDs
@@ -11,7 +11,7 @@ export const ratings = pgTable("ratings", {
         .notNull(),
 
     // metadata
-    timeControl: TimeControl("time_control").notNull(),
+    timeControl: timeControlEnum("time_control").notNull(),
     rating: integer("rating").default(1200),
     gamesPlayed: integer("games_played")
         .notNull()
@@ -32,4 +32,3 @@ export const ratingRelationWithUser = relations(ratings, ({ one }) => ({
         references: [users.id]
     })
 }));
-
