@@ -1,6 +1,5 @@
 import { eq } from "drizzle-orm";
-import { db } from "@repo/db";
-import { sessions } from "@repo/db/src/schema/session";
+import { db, users, sessions } from "@repo/db";
 
 export const fetchUserSession = async (userId: string) => {
   try {
@@ -17,3 +16,13 @@ export const fetchUserSession = async (userId: string) => {
     console.error("Error while fetching user session: ", error);
   }
 };
+
+export const fetchUser = async (userId: string) => {
+    try {
+        const userInformation = (await db.select().from(users).where(eq(users.id, userId)))[0];
+        return userInformation;
+    } catch (error) {
+        console.error("Error while fetching user information");
+        throw new Error("Error while fetching user information");
+    }
+}
