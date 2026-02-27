@@ -6,4 +6,16 @@ const sql = neon(process.env.DATABASE_URL!)
 
 export const db = drizzle(sql, { schema })
 
+export async function testDatabaseConnection() {
+    try {
+        console.log('testing database connection...')
+        await sql`SELECT 1 as test`;
+        console.log("✅ Database connection successful")
+        return true
+    } catch (error) {
+        console.error('database connection failed: ', error)
+        return false
+    }
+}
+
 export * from "./schema"
