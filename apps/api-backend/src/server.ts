@@ -1,12 +1,13 @@
-import express, { NextFunction, Request, Response } from 'express';
-import config from './infrastructure/activeconfig';
+import express from 'express';
 import cors from 'cors'
 import cookieParser from 'cookie-parser'
 import { testDatabaseConnection } from '@repo/db'
+import { apiRouter } from './routes/api.router';
+import backendConfig from './infra/activeconfig';
 
 const app = express();
-const port = config.PORT ?? 7070;
-const nodeEnv = config.ENV;
+const port = backendConfig.PORT ?? 7070;
+const nodeEnv = backendConfig.ENV;
 
 app.use(express.json({ limit: "10mb" }));
 app.use(
@@ -27,10 +28,13 @@ app.use(
 }))
 app.use(cookieParser());
 
-app.use((req: Request, res: Response, next: NextFunction) => {
+app.use((req: express.Request, res: express.Response, next: express.NextFunction) => {
     console.log(`${new Date().toISOString()} ${req.method} ${req.originalUrl}`);
     next();
 });
+
+// routes
+app.use('/api', apiRouter)
 
 app.listen(port, async () => {
     try {

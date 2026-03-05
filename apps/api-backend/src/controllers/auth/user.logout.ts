@@ -1,8 +1,8 @@
 import { Request, Response } from 'express';
 import { eq } from 'drizzle-orm';
-import config from '../../infrastructure/activeconfig';
 import { sendResponse, fetchUser } from '@repo/utils/src/index';
 import { db, sessions } from '@repo/db';
+import backendConfig from '@repo/utils/src/infrastructure/activeconfig.backend';
 
 export const logout = async (req: Request, res: Response): Promise<void> => {
     try {
@@ -15,7 +15,7 @@ export const logout = async (req: Request, res: Response): Promise<void> => {
         // Clear access token cookie
         res.cookie("accessToken", "", {
             httpOnly: true,
-            secure: config.ENV === "production",
+            secure: backendConfig.ENV === "production",
             expires: new Date(0),
             sameSite: "strict",
             path: "/",
@@ -24,7 +24,7 @@ export const logout = async (req: Request, res: Response): Promise<void> => {
         // Clear refresh token cookie
         res.cookie("refreshToken", "", {
             httpOnly: true,
-            secure: config.ENV === "production",
+            secure: backendConfig.ENV === "production",
             expires: new Date(0),
             sameSite: "strict",
             path: "/",

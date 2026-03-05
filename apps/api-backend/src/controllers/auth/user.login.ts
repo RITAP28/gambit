@@ -1,11 +1,11 @@
 import { Request, Response } from "express";
 import { eq } from "drizzle-orm";
-import bcrypt from "bcrypt";
+import * as bcrypt from "bcrypt";
 import validator from "validator";
 import { db, users } from "@repo/db";
-import config from "../../infrastructure/activeconfig";
 import rateLimit from 'express-rate-limit';
 import { sendResponse, accessTokenGenerator, refreshTokenGenerator, saveSession } from "@repo/utils/src/index";
+import backendConfig from "@repo/utils/src/infrastructure/activeconfig.backend";
 
 // Configure rate limiting for login attempts
 export const loginLimiter = rateLimit({
@@ -76,7 +76,7 @@ export const login = async (req: Request, res: Response): Promise<void> => {
     res.cookie("accessToken", accessToken, {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
-      maxAge: (Number(config.ACCESS_TOKEN_EXPIRY_TIME) || 1800) * 1000, // Convert to milliseconds
+      maxAge: (Number(backendConfig.ACCESS_TOKEN_EXPIRY_TIME) || 1800) * 1000, // Convert to milliseconds
       sameSite: "strict",
       path: "/",
     });
@@ -84,7 +84,7 @@ export const login = async (req: Request, res: Response): Promise<void> => {
     res.cookie("refreshToken", refreshToken, {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
-      maxAge: (Number(config.REFRESH_TOKEN_EXPIRY_TIME) || 1209600) * 1000, // Convert to milliseconds
+      maxAge: (Number(backendConfig.REFRESH_TOKEN_EXPIRY_TIME) || 1209600) * 1000, // Convert to milliseconds
       sameSite: "strict",
       path: "/",
     });

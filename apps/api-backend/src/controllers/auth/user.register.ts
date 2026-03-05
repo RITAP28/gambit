@@ -2,15 +2,15 @@ import { Request, Response } from "express";
 import validator from 'validator';
 import { eq } from "drizzle-orm";
 import bcrypt from 'bcrypt';
-import config from "../../infrastructure/activeconfig";
 import { sendResponse } from "@repo/utils/src/index";
 import { accessTokenGenerator, refreshTokenGenerator } from "@repo/utils/src/index";
 import { saveSession } from '@repo/utils/src/save.session'
 import { authProvider } from '../../../../../packages/types/src/index'
 import { db, users } from "@repo/db";
+import backendConfig from "@repo/utils/src/infrastructure/activeconfig.backend";
 
-const ACCESS_TOKEN_EXPIRY = config.ACCESS_TOKEN_EXPIRY_TIME;
-const REFRESH_TOKEN_EXPIRY = config.REFRESH_TOKEN_EXPIRY_TIME;
+const ACCESS_TOKEN_EXPIRY = backendConfig.ACCESS_TOKEN_EXPIRY_TIME;
+const REFRESH_TOKEN_EXPIRY = backendConfig.REFRESH_TOKEN_EXPIRY_TIME;
 
 export const register = async (req: Request, res: Response) => {
     try {
@@ -28,7 +28,7 @@ export const register = async (req: Request, res: Response) => {
         const hashedPassword = await bcrypt.hash(password, 12);
 
         // isVerified: false --> user needs to do email verification via link in the email
-        const newUser = { 
+        const newUser = {
             username: name as string,
             email: email as string,
             passwordHash: hashedPassword,
@@ -56,7 +56,7 @@ export const register = async (req: Request, res: Response) => {
             // console.log("in here!, max age is: ", ACCESS_TOKEN_EXPIRY);
             res.cookie("accessToken", accessToken, {
                 httpOnly: true,
-                secure: config.ENV === "production",
+                secure: backendConfig.ENV === "production",
                 maxAge: Number(ACCESS_TOKEN_EXPIRY) || 1000 * 60 * 30,
                 sameSite: "strict",
                 path: "/",
@@ -64,7 +64,7 @@ export const register = async (req: Request, res: Response) => {
 
             res.cookie("refreshToken", refreshToken, {
                 httpOnly: true,
-                secure: config.ENV === "production",
+                secure: backendConfig.ENV === "production",
                 maxAge: Number(REFRESH_TOKEN_EXPIRY) || 1000 * 60 * 60 * 24 * 14,
                 sameSite: "strict",
                 path: "/",

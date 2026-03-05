@@ -2,11 +2,11 @@ import { NextFunction, Request, Response } from "express";
 import dotenv from "dotenv";
 import jwt from "jsonwebtoken";
 import { eq } from "drizzle-orm";
-import config from "../infrastructure/activeconfig";
 import { db } from "@repo/db";
 import { sessions } from "@repo/db/src/schema/session";
 import { sendResponse } from '@repo/utils/src/index';
 import { fetchUserSession } from '@repo/utils/src/db.queries';
+import backendConfig from "@repo/utils/src/infrastructure/activeconfig.backend";
 
 dotenv.config();
 
@@ -17,8 +17,8 @@ export const authenticateUser = async (
 ) => {
   try {
     const userId = req.params.userId as string;
-    const accessTokenSecretKey = config.ACCESS_TOKEN_SECRET_KEY;
-    const refreshTokenSecretKey = config.REFRESH_TOKEN_SECRET_KEY;
+    const accessTokenSecretKey = backendConfig.ACCESS_TOKEN_SECRET_KEY;
+    const refreshTokenSecretKey = backendConfig.REFRESH_TOKEN_SECRET_KEY;
 
     if (!accessTokenSecretKey || !refreshTokenSecretKey) {
       return sendResponse(res, 500, false, "Server configuration error");
@@ -85,7 +85,7 @@ export const authenticateUser = async (
                 const newAccessToken = jwt.sign(
                   { userId: (refreshDecoded as any).userId },
                   accessTokenSecretKey,
-                  { expiresIn: Number(config.ACCESS_TOKEN_EXPIRY_TIME) || 1800 }
+                  { expiresIn: Number(backendConfig.ACCESS_TOKEN_EXPIRY_TIME) || 1800 }
                 );
 
                 // Update session with new access token

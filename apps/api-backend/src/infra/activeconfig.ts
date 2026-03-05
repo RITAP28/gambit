@@ -1,5 +1,6 @@
-
-const config = {
+import 'dotenv/config'
+//
+const backendConfig = {
     PORT: 7070,
     ENV: process.env.NODE_ENV,
     DATABASE_URL: process.env.DATABASE_URL,
@@ -14,4 +15,4 @@ const config = {
     REFRESH_TOKEN_EXPIRY: process.env.REFRESH_TOKEN_EXPIRY,
 }
 
-export default config;
+export default backendConfig;

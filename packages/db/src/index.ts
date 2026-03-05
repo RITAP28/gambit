@@ -1,8 +1,10 @@
 import { drizzle } from "drizzle-orm/neon-http"
 import { neon } from "@neondatabase/serverless"
 import * as schema from "./schema"
+import 'dotenv/config'
 
-const sql = neon(process.env.DATABASE_URL!)
+const db_url = process.env.DATABASE_URL;
+const sql = neon(db_url!)
 
 export const db = drizzle(sql, { schema })
 

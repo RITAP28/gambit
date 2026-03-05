@@ -1,6 +1,6 @@
 import { eq } from "drizzle-orm";
 import { db, sessions } from "@repo/db";
-import config from "@repo/api/src/infrastructure/activeconfig";
+import backendConfig from "../infra/activeconfig";
 
 export const saveSession = async (
   userId: string,
@@ -11,7 +11,7 @@ export const saveSession = async (
     const existingSession = (await db.select().from(sessions).where(eq(sessions.userId, userId)))[0];
     
     // Getting refresh token expiry in seconds
-    const refreshTokenExpirySeconds = Number(config.REFRESH_TOKEN_EXPIRY_TIME) || 1209600;
+    const refreshTokenExpirySeconds = Number(backendConfig.REFRESH_TOKEN_EXPIRY_TIME) || 1209600;
     
     // Calculating expiry date by adding seconds
     const expiresAt = new Date();
