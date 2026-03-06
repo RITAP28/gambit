@@ -39,9 +39,14 @@ export const authSlice = createSlice({
         oauth: (state, action: PayloadAction<{ user: AuthState["user"]; isAuthenticated: boolean; isVerified: boolean, isOnboarded: boolean, isSubscribed: boolean }>) => {
             state.user = action.payload.user;
             state.isAuthenticated = action.payload.isAuthenticated;
+        },
+        newAccessToken: (state, action: PayloadAction<{ accessToken: string }>) => {
+            if (state.user) {
+                state.user.accessToken = action.payload.accessToken;
+            }
         }
     }
 });
 
-export const { registration, login, logout, initial, oauth } = authSlice.actions;
+export const { registration, login, logout, initial, oauth, newAccessToken } = authSlice.actions;
 export default authSlice.reducer;

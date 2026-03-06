@@ -14,9 +14,9 @@ if (!accessTokenKey || !refreshTokenKey) {
 }
 
 export const accessTokenGenerator = (userId: string) => {
-  const expiryTime = Number(backendConfig.ACCESS_TOKEN_EXPIRY_TIME) || 1800;
+  const expiryTime = backendConfig.ACCESS_TOKEN_EXPIRY_TIME || "30m";
   const accessToken = jwt.sign({ userId: userId }, accessTokenKey, {
-    expiresIn: expiryTime,
+    expiresIn: "30m",
   });
   // console.log("access token generated: ", accessToken);
   return accessToken;
@@ -25,7 +25,7 @@ export const accessTokenGenerator = (userId: string) => {
 export const refreshTokenGenerator = (userId: string) => {
   const expiryTime = Number(backendConfig.REFRESH_TOKEN_EXPIRY_TIME) || 1209600;
   const refreshToken = jwt.sign({ userId: userId }, refreshTokenKey, {
-    expiresIn: expiryTime,
+    expiresIn: "14d",
   });
   // console.log("refresh token generated: ", refreshToken);
   return refreshToken;

@@ -7,6 +7,7 @@ import { Login } from './pages/auth/login';
 import Landing from './pages/general/landing';
 import ProtectedRoute from './middleware/protectedRoute';
 import Home from './pages/general/home';
+import Game from './pages/general/game';
 
 function App() {
   const user = useAppSelector((state) => state.auth);
@@ -21,6 +22,7 @@ function App() {
 
         {/* Protected Routes */}
         <Route path='/home/:userId' element={<ProtectedRoute isAuthenticated={user.isAuthenticated}><Home /></ProtectedRoute>} />
+        <Route path='/game/:gameId' element={<ProtectedRoute isAuthenticated={user.isAuthenticated}><Game /></ProtectedRoute>} />
       </Routes>
     </>
   )

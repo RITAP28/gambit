@@ -1,7 +1,7 @@
 import { WebSocket } from "ws";
-import { verifyAccessToken } from "@repo/auth/src/index"
 import { onlineUsers } from "./server";
 import { IncomingMessage } from "node:http";
+import { handleMatchPlayer, handleUserConnection } from "./messageHandler";
 
 export const sendMessage = (ws: WebSocket, type: string, data: {}) => {
     if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type, ...data }));
@@ -27,24 +27,15 @@ export function handleConnection(ws: WebSocket, req: IncomingMessage){
             console.log('data received through websockets: ', data);
             try {
                 const message = JSON.parse(data.toString());
-                if (message.action === 'user-connected') {
-                    const { userId, accessToken } = message;
-
-                    // verifying access token
-                    const payload = verifyAccessToken(accessToken);
-
-                    onlineUsers.set(payload.userId, ws);
-                    currentUserId = payload.userId;
-                    broadcastOnlineUsers();
-
-                    console.log(`User ${userId} connected to the websocket`);
-
-                    // send confirmation
-                    ws.send(JSON.stringify({
-                        action: 'connection-established',
-                        userId: userId,
-                        message: 'Successfully connected'
-                    }));
+                switch (message.action) {
+                    case 'user-connected':
+                        handleUserConnection(ws, message, currentUserId);
+                        break;
+                    case 'join-match-making':
+                        handleMatchPlayer(ws, message);
+                        break;
+                    default:
+                        break;
                 }
             } catch (error) {
                 console.error('Error processing message: ', error);
