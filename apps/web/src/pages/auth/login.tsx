@@ -3,7 +3,6 @@ import {
   Card,
   CardAction,
   CardContent,
-  CardDescription,
   CardFooter,
   CardHeader,
   CardTitle,
@@ -29,7 +28,7 @@ export function Login() {
 
   const formRef = useRef<HTMLFormElement>(null);
 
-  const handleLogin = async (e: React.SubmitEvent) => {
+  const handleLogin = async (e: React.SubmitEvent<HTMLFormElement>) => {
     e.preventDefault();
     setLoading(true);
     setError(null);
@@ -58,56 +57,85 @@ export function Login() {
 
       if (loginResponse.status === 200) {
         console.log('login response: ', loginResponse.data);
-        const user = loginResponse.data.user;
-        const accessToken = loginResponse.data.accessToken;
-        dispatch(
-          login({
-            user: {
-              id: user.id,
-              name: user.name,
-              email: user.email,
-              accessToken: accessToken,
-            },
-            isAuthenticated: true,
-          })
-        );
+        const { user, accessToken } = loginResponse.data;
 
-        navigate(`/home/${user.id}`);
-      } else if (loginResponse.status === 404) {
-        setError("Looks like your account does not exist. Please register to continue!");
+        const wsUrl = config.DEV_WS_URL || 'ws://localhost:8080';
+        const ws = new WebSocket(wsUrl);
+
+        ws.onopen = () => {
+          console.log('Websocket connected');
+          ws.send(JSON.stringify({
+            action: 'user-connected',
+            userId: user.id,
+            accessToken: accessToken
+          }));
+        };
+
+        ws.onmessage = (event) => {
+          try {
+            const message = JSON.parse(event.data);
+            if (message.action === 'connection-established') {
+              console.log('User successfully added to online users list:', message);
+              dispatch(
+                login({
+                  user: {
+                    id: user.id,
+                    name: user.name,
+                    email: user.email,
+                    accessToken: accessToken,
+                  },
+                  isAuthenticated: true,
+                })
+              );
+              setLoading(false);
+              navigate(`/home/${user.id}`);
+            }
+          } catch (error) {
+            console.error('Error parsing message: ', error)
+          }
+        };
+
+        ws.onerror = () => {
+          setError('Failed to connect to the websocket server');
+          setLoading(false);
+        }
       }
     } catch (error) {
       console.error('error while logging in: ', error);
-      setError('error while registering, please try again')
-    } finally {
+      if (axios.isAxiosError(error)) {
+        const status = error.response?.status;
+        if (status === 404) setError("Looks like your account does not exist. Please register to continue!");
+        else setError("error while registering, please try again")
+      }
+
       setLoading(false);
     }
   }
 
   return (
-    <Card className="w-full max-w-sm">
-      <CardHeader>
-        <CardTitle>Login to your account</CardTitle>
-        <CardDescription>
-          Enter your email below to login to your account
-        </CardDescription>
-        <CardAction>
-          <Button variant="link">Sign Up</Button>
-        </CardAction>
-      </CardHeader>
-      <CardContent>
-        <form ref={formRef} onSubmit={handleLogin}>
-          <div className="flex flex-col gap-6">
-            <div className="grid gap-2">
-              <Label htmlFor="email">Email</Label>
-              <Input
-                id="email"
-                type="email"
-                placeholder="m@example.com"
-                required
-                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setEmail(e.target.value)}
-              />
-            </div>
+    <div className="w-full h-screen flex justify-center items-center">
+      <div className="w-full flex justify-center items-center">
+        <form ref={formRef} onSubmit={handleLogin} className="w-full flex justify-center items-center">
+        <Card className="w-full max-w-sm">
+          <CardHeader>
+            <CardTitle>Login to your account</CardTitle>
+            <CardAction>
+              <Button variant="link">Sign Up</Button>
+            </CardAction>
+          </CardHeader>
+          <CardContent>
+            
+              <div className="flex flex-col gap-6">
+                <div className="grid gap-2">
+                  <Label htmlFor="email">Email</Label>
+                  <Input
+                    id="email"
+                    type="email"
+                    placeholder="m@example.com"
+                    required
+                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => setEmail(e.target.value)}
+                  />
+                </div>
             <div className="grid gap-2">
               <div className="flex items-center">
                 <Label htmlFor="password">Password</Label>
@@ -126,7 +154,6 @@ export function Login() {
               />
             </div>
           </div>
-        </form>
       </CardContent>
       <CardFooter className="flex-col gap-2">
         <Button type="submit" className="w-full" disabled={loading}>
@@ -140,7 +167,14 @@ export function Login() {
         <Button variant="outline" className="w-full">
           Login with Google
         </Button>
+        <p className="w-full flex flex-row gap-1 text-sm tracking-tight justify-center items-center py-1">
+          <span className="">Don't have an account?</span>
+          <a href="/register" className="hover:pointer hover:underline transition duration-300 ease-in-out">Register</a>
+        </p>
       </CardFooter>
     </Card>
+    </form>
+      </div>
+    </div>
   )
 }

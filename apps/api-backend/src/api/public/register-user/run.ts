@@ -70,7 +70,7 @@ export const run = async (req: Request, res: Response) => {
         return sendResponse(res, 201, true, "user registered successfully", {
             user: {
                 id: newUserDB.id,
-                username: newUserDB.username,
+                name: newUserDB.username,
                 email: newUserDB.email,
                 isAuthenticated: newUserDB.isAuthenticated,
             },

@@ -256,6 +256,12 @@ importers:
       '@repo/auth':
         specifier: workspace:^
         version: link:../../packages/auth
+      '@repo/db':
+        specifier: workspace:^
+        version: link:../../packages/db
+      dotenv:
+        specifier: ^17.3.1
+        version: 17.3.1
       jsonwebtoken:
         specifier: ^9.0.3
         version: 9.0.3

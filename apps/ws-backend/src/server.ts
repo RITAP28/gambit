@@ -1,12 +1,10 @@
 import { WebSocket, WebSocketServer } from "ws";
 import config from "./infrastructure/activeconfig";
-
-const port = config.PORT;
-const handleConnection = () => {};
+import { handleConnection } from "./connection";
 
 export const onlineUsers = new Map<string, WebSocket>();
 
-const wss = new WebSocketServer({ port: port });
+const wss = new WebSocketServer({ port: Number(config.PORT) });
 wss.on("connection", handleConnection);
 
-console.log(`WS server running on port ${port}`);
+console.log(`WS server running on port ${config.PORT}`);

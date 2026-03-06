@@ -6,10 +6,12 @@ interface AuthPayload extends JwtPayload {
 }
 
 export function verifyAccessToken(token: string): AuthPayload {
+    console.log('ACCESS_TOKEN_SECRET_KEY: ', ACCESS_TOKEN_SECRET_KEY);
     if (!token || typeof token !== 'string') throw new Error("Token missing or malformed");
 
     try {
         const decoded = verify(token, ACCESS_TOKEN_SECRET_KEY);
+        console.log('decoded in websocket: ', decoded)
 
         // necessary validations/checks 
         if (!decoded || typeof decoded !== "object") throw new Error("Invalid token payload");

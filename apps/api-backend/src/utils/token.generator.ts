@@ -18,7 +18,7 @@ export const accessTokenGenerator = (userId: string) => {
   const accessToken = jwt.sign({ userId: userId }, accessTokenKey, {
     expiresIn: expiryTime,
   });
-  console.log("access token generated: ", accessToken);
+  // console.log("access token generated: ", accessToken);
   return accessToken;
 };
 
@@ -27,7 +27,7 @@ export const refreshTokenGenerator = (userId: string) => {
   const refreshToken = jwt.sign({ userId: userId }, refreshTokenKey, {
     expiresIn: expiryTime,
   });
-  console.log("refresh token generated: ", refreshToken);
+  // console.log("refresh token generated: ", refreshToken);
   return refreshToken;
 };
 

@@ -24,14 +24,14 @@ export const run = async (req: Request, res: Response): Promise<void> => {
     const accessToken = accessTokenGenerator(existingUser.id);
     const refreshToken = refreshTokenGenerator(existingUser.id);
 
-    console.log("access token: ", accessToken);
-    console.log("refresh token: ", refreshToken);
+    // console.log("access token: ", accessToken);
+    // console.log("refresh token: ", refreshToken);
 
     // Save session
     const savedSession = await saveSession(existingUser.id, accessToken, refreshToken);
     if (!savedSession) return sendResponse(res, 500, false, loginErrors.SESSION_FAILED);
 
-    console.log("expiry saved in db: ", savedSession.expiresAt);
+    // console.log("expiry saved in db: ", savedSession.expiresAt);
 
     // Set secure cookies
     res.cookie("accessToken", accessToken, {

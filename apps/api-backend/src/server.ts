@@ -14,7 +14,7 @@ app.use(
   cors({
     origin(origin, callback) {
       const allowedOrigins =
-        nodeEnv === "production" ? [] : ["http://localhost:5173"]
+        nodeEnv === "production" ? [] : ["http://localhost:5173", "http://localhost:5174"]
 
       if (!origin || allowedOrigins.includes(origin as string)) {
         callback(null, true);

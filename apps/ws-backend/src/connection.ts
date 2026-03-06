@@ -20,27 +20,45 @@ export const broadcastOnlineUsers = () => {
 };
 
 export function handleConnection(ws: WebSocket, req: IncomingMessage){
-    const token = new URL(req.url, "http://localhost").searchParams.get("token");
-    if (!token) {
-        ws.close();
-        return;
-    };
-
+    console.log('New Websocket connection established');
+    let currentUserId: string | null = null;
     try {
-        const payload = verifyAccessToken(token);
-
-        onlineUsers.set(payload.userId, ws);
-        broadcastOnlineUsers();
-
         ws.on('message', (data) => {
-            console.log('message on websocket');
+            console.log('data received through websockets: ', data);
+            try {
+                const message = JSON.parse(data.toString());
+                if (message.action === 'user-connected') {
+                    const { userId, accessToken } = message;
+
+                    // verifying access token
+                    const payload = verifyAccessToken(accessToken);
+
+                    onlineUsers.set(payload.userId, ws);
+                    currentUserId = payload.userId;
+                    broadcastOnlineUsers();
+
+                    console.log(`User ${userId} connected to the websocket`);
+
+                    // send confirmation
+                    ws.send(JSON.stringify({
+                        action: 'connection-established',
+                        userId: userId,
+                        message: 'Successfully connected'
+                    }));
+                }
+            } catch (error) {
+                console.error('Error processing message: ', error);
+            }
         });
 
         ws.on('close', () => {
-            onlineUsers.delete(payload.userId);
-
-            // notifying everyone this user is now offline
-            broadcastOnlineUsers();
+            if (currentUserId) {
+                onlineUsers.delete(currentUserId);
+                
+                // notifying everyone this user is now offline
+                broadcastOnlineUsers();
+                console.log(`User ${currentUserId} disconnected`);
+            }
         });
     } catch (error) {
         ws.close();
