@@ -6,7 +6,7 @@ import { db } from "@repo/db";
 import { sessions } from "@repo/db/src/schema/session";
 import { sendResponse } from '@repo/utils/src/index';
 import { fetchUserSession } from '@repo/utils/src/db.queries';
-import backendConfig from "@repo/utils/src/infrastructure/activeconfig.backend";
+import backendConfig from "../infra/activeconfig";
 
 dotenv.config();
 
@@ -85,7 +85,7 @@ export const authenticateUser = async (
                 const newAccessToken = jwt.sign(
                   { userId: (refreshDecoded as any).userId },
                   accessTokenSecretKey,
-                  { expiresIn: Number(backendConfig.ACCESS_TOKEN_EXPIRY_TIME) || 1800 }
+                  { expiresIn: "30m" }
                 );
 
                 // Update session with new access token

@@ -27,6 +27,7 @@ export function handleConnection(ws: WebSocket, req: IncomingMessage){
             console.log('data received through websockets: ', data);
             try {
                 const message = JSON.parse(data.toString());
+                console.log('message received: ', message);
                 switch (message.action) {
                     case 'user-connected':
                         handleUserConnection(ws, message, currentUserId);

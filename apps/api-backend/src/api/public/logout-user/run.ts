@@ -5,7 +5,6 @@ import backendConfig from "../../../infra/activeconfig";
 
 export const run = async (req: Request, res: Response) => {
     const userId = req.body.data.userId;
-    console.log('user id: ', userId);
     if (!userId) return sendResponse(res, 400, false, logoutErrors.INVALID_ID);
 
     const existingUser = await fetchUser(userId);

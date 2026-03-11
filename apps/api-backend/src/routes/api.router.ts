@@ -14,7 +14,7 @@ fs.readdirSync(apiDir).forEach((folder) => {
         const module = require(runPath);
         if (module.run) {
             handlers[folder] = module.run;
-            console.log(`Loaded API handler: ${folder}`);
+            // console.log(`Loaded API handler: ${folder}`);
         }
     } catch (error) {
         console.warn(`Skipping ${folder} no run.ts found`);

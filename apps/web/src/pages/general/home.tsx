@@ -1,5 +1,5 @@
 import SearchPlayerModal from "@/components/modals/searchPlayerModal";
-import { useWebsocket } from "@/hooks/useWebsocket";
+import { useWebSocket } from "@/hooks/useWebSocket";
 import config from "@/infra/activeconfig";
 import { useAppSelector } from "@/redux/hook"
 import { logout } from "@/redux/slices/auth.slice";
@@ -12,7 +12,7 @@ const Home = () => {
   const dispatch = useDispatch();
   const navigate = useNavigate();
   const { user } = useAppSelector((state) => state.auth);
-  const { send, ws } = useWebsocket();
+  const { ws, isConnected, sendMessage } = useWebSocket();
 
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
@@ -48,8 +48,8 @@ const Home = () => {
   };
 
   const handleSearchPlayers = () => {
-    if (!user) return;
-    send({ action: 'join-match-making', userId: user.id });
+    if (!user || !ws) return;
+    sendMessage('join-match-making', { userId: user.id });
     setSearchModalOpen(true);
   };
 
