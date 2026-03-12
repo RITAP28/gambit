@@ -1,4 +1,4 @@
-import { boolean, integer, pgEnum, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import { boolean, integer, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 import { users } from "./user";
 import { tournaments } from "./tournament";
 import { relations } from "drizzle-orm";
@@ -37,7 +37,6 @@ export const games = pgTable("games", {
     createdAt: timestamp("created_at").defaultNow().notNull()
 });
 
-// 
 export const gamesRelationWithUser = relations(games, ({ one }) => ({
     whitePlayer: one(users, {
         fields: [games.whitePlayerId],

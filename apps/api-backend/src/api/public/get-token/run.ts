@@ -54,7 +54,7 @@ export const run = async (req: AuthRequest, res: Response) => {
                 accessToken: token
             });
         } catch (error) {
-            if (error.name === jwt.TokenExpiredError) {
+            if (error.name === "TokenExpiredError") {
                 try {
                     console.log('decrypting refresh token');
 

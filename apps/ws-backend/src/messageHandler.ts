@@ -85,6 +85,7 @@ export async function handleMatchPlayer(ws: WebSocket, message: any) {
             })
             .returning()
     )[0];
+    console.log('new game created: ', newGame);
 
     sendMessage(ws1, 'match-found', {
         action: 'match-found',
