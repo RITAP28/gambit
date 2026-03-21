@@ -111,6 +111,9 @@ export async function handleMatchPlayer(ws: WebSocket, message: any) {
     };
 
     activeGames.set(gameId, game);
+    console.log('game id: ', gameId);
+    console.log('active games set for this game id: ', activeGames.has(gameId));
+
     sendMessage(ws1, 'match-found', {
         action: 'match-found',
         userId: player1,
@@ -128,15 +131,21 @@ export async function handleMatchPlayer(ws: WebSocket, message: any) {
     });
 };
 
-export async function handleMakeMove(ws: WebSocket, message: { action: string, data: { gameId: string, playerId: string, uci: string, color: 'white' | 'black' } }) {
+export async function handleMakeMove(ws: WebSocket, message: { action: string, data: { gameId: string, playerId: string, uci: string, color: 'w' | 'b' } }) {
     const { action, data } = message;
+    console.log('action: ', action);
+    console.log('action: ', typeof action);
+    console.log('data: ', data);
     if (action !== 'possible-move') return;
 
     const gameId = data.gameId;
     const uci = data.uci;
 
     const game = activeGames.get(gameId);
-    if (!game) return;
+    if (!game) {
+        console.log('no game soprrry');
+        return;
+    }
 
     const chess = game.chess;
 
@@ -178,16 +187,17 @@ export async function handleMakeMove(ws: WebSocket, message: { action: string, d
         const loser = updatedClocks.white <= 0 ? 'white' : 'black';
         broadcastToGame(gameId, {
             action: 'time-out',
-            loser: loser,
+            data: {
+                loser: loser,
+            }
         });
         return;
     };
 
     // saving the move in the database
     // rollback in-memory state on failure
-    let moveSaved;
     try {
-        [moveSaved] = await db
+        await db
             .insert(moves)
             .values({
                 gameId: gameId,
@@ -208,6 +218,7 @@ export async function handleMakeMove(ws: WebSocket, message: { action: string, d
     };
 
     // persisting first in the database above, then updating the in-memory state
+    console.log('database insertion successful');
     activeGames.set(gameId, {
         ...game,
         activeColor: game.activeColor === 'white' ? 'black' : 'white',
@@ -218,10 +229,11 @@ export async function handleMakeMove(ws: WebSocket, message: { action: string, d
     });
 
     // todo: game status validation --> checking whether there is a checkmate/draw/stalemate/three-fold-repetition
-    if (chess.isCheckmate) {
+    if (chess.isCheckmate()) {
         console.log('checkmate');
         broadcastToGame(gameId, {
-            action: 'checkmate'
+            action: 'checkmate',
+            data: {}
         });
 
         await db.update(games).set({
@@ -230,10 +242,11 @@ export async function handleMakeMove(ws: WebSocket, message: { action: string, d
         });
         return;
     }
-    else if (chess.isDraw) {
+    else if (chess.isDraw()) {
         console.log('draw, shake hands!');
         broadcastToGame(gameId, {
-            action: 'draw'
+            action: 'draw',
+            data: {}
         });
 
         await db.update(games).set({
@@ -242,19 +255,21 @@ export async function handleMakeMove(ws: WebSocket, message: { action: string, d
         });
         return;
     }
-    else if (chess.isStalemate) { console.log('stalemate') }
-    else if (chess.isThreefoldRepetition) { console.log('three fold repetition') }
+    else if (chess.isStalemate()) { console.log('stalemate') }
+    else if (chess.isThreefoldRepetition()) { console.log('three fold repetition') }
 
     // broadcasting information to both the players to keep them in sync
     broadcastToGame(gameId, {
-        action: 'move-made',
-        fen: chess.fen(),
-        uci: uci,
-        san: move.san,
-        moveNumber: chess.history().length,
+        action: 'move-successful',
+        data: {
+            fen: chess.fen(),
+            uci: uci,
+            san: move.san,
+            moveNumber: chess.history().length,
 
-        // keeping clients in sync with updated clocks
-        clocks: updatedClocks
+            // keeping clients in sync with updated clocks
+            clocks: updatedClocks
+        }
     });
 };
 

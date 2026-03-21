@@ -8,19 +8,6 @@ import type { PieceDropHandlerArgs, PieceHandlerArgs } from "react-chessboard";
 import { useParams } from "react-router-dom";
 import { useWebSocket } from "./useWebSocket";
 
-interface IMoveProps {
-    id: string;
-    createdAt: Date;
-    gameId: string;
-    color: "white" | "black";
-    moveNumber: number;
-    san: string;
-    uci: string;
-    fenAfter: string;
-    timeTaken: number;
-    clockAfter: number;
-}
-
 export const useGame = () => {
     const { ws, sendMessage } = useWebSocket();
     const user = useAppSelector((state) => state.auth.user);
@@ -29,7 +16,7 @@ export const useGame = () => {
 
     // defining the game as a ref to have access to the latest game information/state within closures and across renders
     const chessGameRef = useRef(new Chess());
-    const timerRef = useRef<number>(0);
+    const timerRef = useRef<ReturnType<typeof setInterval>>(0);
     const moveStartRef = useRef<number>(0);
 
     // states important for running the game
@@ -52,30 +39,32 @@ export const useGame = () => {
 
     const handleMessage = useCallback((event: MessageEvent) => {
         const message = JSON.parse(event.data);
+        console.log('message received: ', message);
+
+        // if the move is successful
         if (message.action === 'move-successful') {
-            const move = message.move as IMoveProps;
+            console.log('message received for successful move: ', message);
+            const moveDta = message.data;
 
-            // syncing chess engine
-            chessGameRef.current.load(move.fenAfter);
+            // syncing chess engine & UI updates
+            chessGameRef.current.load(moveDta.fen);
+            setChessPosition(moveDta.fen);
 
-            // UI update
-            setChessPosition(move.fenAfter);
+            const source = moveDta.uci.slice(0, 2);
+            const target = moveDta.uci.slice(2, 4);
+            setLastMove((prev) => [ ...prev, { from: source, to: target } ]);
 
-            // move.uci: {move.from}{move.to}{move.promotion}
-            const source = move.uci.slice(0, 2);
-            const target = move.uci.slice(2, 4);
-
-            setLastMove((prev) => [
-                ...prev,
-                { from: source, to: target }
-            ]);
-
-            // updating move history
-            const hist = chessGameRef.current.history({ verbose: true });
-            setMoveHistory(hist);
-
-            // update active player
+            // updating move history & active player
+            setMoveHistory(chessGameRef.current.history({ verbose: true }));
             setActiveColor(chessGameRef.current.turn());
+
+            // syncing clocks between the server and the client
+            // server sends the time in the format of milliseconds, so converting them to seconds
+            console.log('white time left: ', Math.floor(moveDta.clocks.white / 1000));
+            console.log('black time left: ', Math.floor(moveDta.clocks.black / 1000));
+
+            setWhiteTime(Math.floor(moveDta.clocks.white / 1000));
+            setBlackTime(Math.floor(moveDta.clocks.black / 1000));
         }
     }, []);
 
@@ -90,90 +79,87 @@ export const useGame = () => {
         moveStartRef.current = Date.now();
     }, [activeColor]);
 
-    // const onDrop = ({ sourceSquare, targetSquare, piece }: PieceDropHandlerArgs) => {
-    //     if (!targetSquare) return false;
-    //     try {
-    //         const now = Date.now();
-    //         const timeTakenSec = Math.round((now - moveStartRef.current) / 1000);
-    //         moveStartRef.current = now;
+    const onDrop = ({ sourceSquare, targetSquare }: PieceDropHandlerArgs) => {
+        if (!targetSquare) return false;
+        try {
+            const now = Date.now();
+            // const timeTakenSec = Math.round((now - moveStartRef.current) / 1000);
+            moveStartRef.current = now;
 
-    //         // const move = chessGameRef.current.move({
-    //         //     from: sourceSquare,
-    //         //     to: targetSquare as string,
-    //         //     promotion: 'q'
-    //         // });
-    //         // if (!move) return false;
-    //         sendMessage('make-move', {
-    //             gameId: gameId,
-    //             uci: `${sourceSquare}${targetSquare}${}`,
-    //         })
+            const move = chessGameRef.current.move({
+                from: sourceSquare,
+                to: targetSquare as string,
+                promotion: 'q'
+            });
+            if (!move) return false;
 
-    //         // optimistic UI updates
-    //         setChessPosition(chessGameRef.current.fen());
-    //         setLastMove((prev) => [
-    //             ...prev,
-    //             { from: sourceSquare, to: targetSquare as string }
-    //         ]);
+            const uci = `${move.from}${move.to}${move.promotion || ''}`;
 
-    //         // updating move history
-    //         const hist = chessGameRef.current.history({ verbose: true });
-    //         setMoveHistory(hist);
+            // optimistic UI updates
+            setChessPosition(chessGameRef.current.fen());
+            setLastMove((prev) => [ ...prev, { from: sourceSquare, to: targetSquare as string } ]);
+            setMoveHistory(chessGameRef.current.history({ verbose: true }));
+            setActiveColor(chessGameRef.current.turn());
 
-    //         // tracking captured pieces
-    //         if (move.captured) {
-    //             setCapturedPieces((prev) => ({
-    //                 ...prev,
-    //                 [move.color === 'w' ? 'b' : 'w']: [
-    //                     ...prev[move.color === 'w' ? 'b' : 'w'],
-    //                     move.captured
-    //                 ]
-    //             }))
-    //         };
+            // tracking captured pieces
+            if (move.captured) {
+                setCapturedPieces((prev) => ({
+                    ...prev,
+                    [move.color === 'w' ? 'b' : 'w']: [
+                        ...prev[move.color === 'w' ? 'b' : 'w'],
+                        move.captured
+                    ]
+                }))
+            };
 
-    //         let clockAfter = 0;
-    //         if (activeColor === 'w') {
-    //             clockAfter = Math.max(0, whiteTime - timeTakenSec);
-    //             setWhiteTime(clockAfter);
-    //         } else {
-    //             clockAfter = Math.max(0, blackTime - timeTakenSec);
-    //             setBlackTime(clockAfter);
-    //         }
+            // let clockAfter = 0;
+            // if (activeColor === 'w') {
+            //     clockAfter = Math.max(0, whiteTime - timeTakenSec);
+            //     setWhiteTime(clockAfter);
+            // } else {
+            //     clockAfter = Math.max(0, blackTime - timeTakenSec);
+            //     setBlackTime(clockAfter);
+            // }
 
-    //         // updating game states
-    //         if (chessGameRef.current.isCheckmate()) setStatus('checkmate');
-    //         else if (chessGameRef.current.isCheck()) setStatus('check');
-    //         else if (chessGameRef.current.isDraw()) setStatus('draw');
-    //         else setStatus('playing');
+            // if (chessGameRef.current.isCheckmate()) setStatus('checkmate');
+            // else if (chessGameRef.current.isCheck()) setStatus('check');
+            // else if (chessGameRef.current.isDraw()) setStatus('draw');
+            // else setStatus('playing');
 
-    //         // sending websocket related events to backend
-    //         sendMessage('possible-move-made', {
-    //             userId: user?.id,
-    //             opponentId: opponentId,
-    //             data: {
-    //                 gameId: gameId,
-    //                 moveNumber: Math.ceil(chessGameRef.current.history().length / 2),
-    //                 color: activeColor === 'w' ? 'white' : 'black',
-    //                 san: move.san,
-    //                 uci: `${move.from}${move.to}${move.promotion ?? ""}`,
-    //                 fenAfter: chessGameRef.current.fen(),
-    //                 timeTaken: timeTakenSec,
-    //                 clockAfter: clockAfter,
-    //             }
-    //         });
+            // sending websocket related events to backend
+            // sendMessage('possible-move-made', {
+            //     userId: user?.id,
+            //     opponentId: opponentId,
+            //     data: {
+            //         gameId: gameId,
+            //         moveNumber: Math.ceil(chessGameRef.current.history().length / 2),
+            //         color: activeColor === 'w' ? 'white' : 'black',
+            //         san: move.san,
+            //         uci: `${move.from}${move.to}${move.promotion ?? ""}`,
+            //         fenAfter: chessGameRef.current.fen(),
+            //         timeTaken: timeTakenSec,
+            //         clockAfter: clockAfter,
+            //     }
+            // });
 
-    //         setActiveColor(chessGameRef.current.turn());
-    //         return true
-    //     } catch (error) {
-    //         console.error('error while dropping a piece: ', error);
-    //         return false;
-    //     }
-    // }
+            // sending the move info to the server
+            sendMessage('possible-move', {
+                data: {
+                    gameId: gameId,
+                    playerId: user?.id,
+                    uci: uci,
+                    color: activeColor
+                }
+            });
 
-    const onDrop = () => {
-        // sendMessage('possible-move-made', { gameId, uci })
+            return true;
+        } catch (error) {
+            console.error('error while dropping a piece: ', error);
+            return false;
+        }
     }
 
-    const canDragPiece = ({ piece }: PieceHandlerArgs) => piece.pieceType[0] === playerColor && activeColor === playerColor
+    const canDragPiece = ({ piece }: PieceHandlerArgs) => piece.pieceType[0] === playerMetadata?.color;
 
     useEffect(() => {
         const fetchGameMetadata = async () => {
@@ -237,11 +223,11 @@ export const useGame = () => {
                     const dta = response.data.metadata;
                     setOpponentMetadata({
                         ...dta.opponent,
-                        time: opponentMetadata?.color === 'w' ? whiteTime : blackTime
+                        time: dta.opponent.color === 'w' ? whiteTime : blackTime
                     });
                     setPlayerMetadata({
                         ...dta.player,
-                        time: playerMetadata?.color === 'w' ? whiteTime : blackTime
+                        time: dta.player.color === 'w' ? whiteTime : blackTime
                     });
                 };
             } catch (error) {
@@ -257,11 +243,11 @@ export const useGame = () => {
         timerRef.current = setInterval(() => {
             if (status !== 'playing') clearInterval(timerRef.current);
             if (activeColor === 'w') {
-                console.log('wt - 1');
+                console.log(whiteTime);
                 setWhiteTime((t) => Math.max(0, t-1));
             }
             else if (activeColor === 'b') {
-                console.log('bt - 1');
+                console.log(blackTime);
                 setBlackTime((t) => Math.max(0, t-1));
             }
         }, 1000);

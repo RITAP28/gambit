@@ -5,12 +5,15 @@ import { useEffect } from 'react';
 import { Chessboard } from 'react-chessboard'
 
 const Game = () => {
-  const { chessGameRef, chessPosition, setChessPosition, activeColor, moveHistory, status, playerMetadata, opponentMetadata, onDrop, canDragPiece } = useGame();
+  const { chessGameRef, chessPosition, setChessPosition, activeColor, moveHistory, status, playerMetadata, opponentMetadata, onDrop, canDragPiece, whiteTime, blackTime } = useGame();
+
+  const playerTime = playerMetadata?.color === 'w' ? whiteTime : blackTime;
+  const opponentTime = opponentMetadata?.color === 'w' ? whiteTime : blackTime;
 
   // loading the initial piece positions after the first mount
   useEffect(() => {
     setChessPosition(chessGameRef.current.fen());
-  });
+  }, []);
 
   return (
     <div className='game'>
@@ -23,7 +26,7 @@ const Game = () => {
       <main className="game-layout w-full flex flex-row p-2">
         {/* left board view */}
         <section className="board-column">
-          {opponentMetadata && <PlayerCard {...opponentMetadata} isActive={activeColor === opponentMetadata?.color} />}
+          {opponentMetadata && <PlayerCard {...opponentMetadata} time={opponentTime} isActive={activeColor === opponentMetadata?.color} />}
           <div className="board-wrap">
             <Chessboard
               options={{
@@ -40,7 +43,7 @@ const Game = () => {
               }}
             />
           </div>
-          {playerMetadata && <PlayerCard {...playerMetadata} isActive={activeColor === playerMetadata?.color} />}
+          {playerMetadata && <PlayerCard {...playerMetadata} time={playerTime} isActive={activeColor === playerMetadata?.color} />}
         </section>
 
         {/* right board view */}

@@ -1,6 +1,6 @@
 import type { IClockProps } from '@repo/types'
 
-const Clock = ({ userId, time, isActive, color }: IClockProps) => {
+const Clock = ({ time, isActive, color }: IClockProps) => {
   const formatTime = (s: number) => `${String(Math.floor(s / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`;
 
   return (

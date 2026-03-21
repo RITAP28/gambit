@@ -24,7 +24,6 @@ export function handleConnection(ws: WebSocket, req: IncomingMessage){
     let currentUserId: string | null = null;
     try {
         ws.on('message', (data) => {
-            console.log('data received through websockets: ', data);
             try {
                 const message = JSON.parse(data.toString());
                 console.log('message received: ', message);
@@ -35,7 +34,7 @@ export function handleConnection(ws: WebSocket, req: IncomingMessage){
                     case 'join-match-making':
                         handleMatchPlayer(ws, message);
                         break;
-                    case 'possible-move-made':
+                    case 'possible-move':
                         handleMakeMove(ws, message);
                         break;
                     default:
