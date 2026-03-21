@@ -1,10 +1,13 @@
 import { verifyAccessToken } from "@repo/auth";
 import { WebSocket } from "ws";
-import { onlineUsers, usersSearchingForMatch } from "./server";
+import { activeGames, GameState, onlineUsers, usersSearchingForMatch } from "./server";
 import { broadcastOnlineUsers, sendMessage } from "./connection";
 import { db } from "../../../packages/db/src";
 import { games } from "../../../packages/db/src/schema/game";
-import { fetchUserSession } from "../../../packages/utils/src";
+import { fetchExistingGame, fetchUserSession } from "../../../packages/utils/src";
+import { moveColorEnum, moves } from '@repo/db/src/schema/moves';
+import { Chess } from "chess.js";
+import { broadcastToGame } from "./utils/broadcastToGame";
 
 export async function handleUserConnection(ws: WebSocket, message: any, currentUserId: string | null) {
     const { userId, accessToken } = message;
@@ -81,12 +84,33 @@ export async function handleMatchPlayer(ws: WebSocket, message: any) {
                 isRated: false,
 
                 startedAt: new Date(),
-                endedAt: new Date()
+                endedAt: null
             })
             .returning()
     )[0];
     console.log('new game created: ', newGame);
 
+    // creating a new game state in server's memory
+    const gameId = newGame.id;
+    const game: GameState = {
+        gameId: newGame.id,
+        whitePlayerId: player1,
+        blackPlayerId: player2,
+
+        chess: new Chess(),
+        activeColor: 'white',
+
+        lastMove: '',
+        lastMoveTime: 0,
+        moveStartTime: Date.now(),
+
+        clocks: {
+            white: 300 * 1000,  // ms
+            black: 300 * 1000   // ms
+        }
+    };
+
+    activeGames.set(gameId, game);
     sendMessage(ws1, 'match-found', {
         action: 'match-found',
         userId: player1,
@@ -100,6 +124,184 @@ export async function handleMatchPlayer(ws: WebSocket, message: any) {
         userId: player2,
         opponentId: player1,
         gameId: newGame.id,
-        coloe: 'black'
+        color: 'black'
     });
+};
+
+export async function handleMakeMove(ws: WebSocket, message: { action: string, data: { gameId: string, playerId: string, uci: string, color: 'white' | 'black' } }) {
+    const { action, data } = message;
+    if (action !== 'possible-move') return;
+
+    const gameId = data.gameId;
+    const uci = data.uci;
+
+    const game = activeGames.get(gameId);
+    if (!game) return;
+
+    const chess = game.chess;
+
+    // todo: turn validation: checking whose turn it is actually
+    const expectedColor = chess.turn() === 'w' ? 'white' : 'black';
+    const isThisPlayersTurn = (expectedColor === 'white' && game.whitePlayerId === data.playerId) || (expectedColor === 'black' && game.blackPlayerId === data.playerId);
+    if (!isThisPlayersTurn) {
+        console.log('illegal move');
+
+        // sending notification to the player's socket making the wrong move
+        ws.send(JSON.stringify({ action: 'not-your-turn', gameId }));
+        return;
+    };
+
+    // applying move via chess.js
+    const move = chess.move({
+        from: data.uci.slice(0,2),
+        to: data.uci.slice(2,4),
+        promotion: data.uci[4] || 'q'
+    });
+    if (!move) {
+        ws.send(JSON.stringify({ action: 'illegal-move', gameId: gameId }));
+        return;
+    };
+
+    // todo: clock management --> configuring the clocks to avoid any cheating based on time
+    const now = Date.now();
+    const timeTaken = now - game.moveStartTime;
+    console.log('time taken for the move: ', timeTaken);
+    const moveColor = move.color === 'w' ? 'white' : 'black';
+
+    const updatedClocks = {
+        white: moveColor === 'white' ? game.clocks.white - timeTaken : game.clocks.white,
+        black: moveColor === 'black' ? game.clocks.black - timeTaken : game.clocks.black
+    };
+
+    // checking for time-out meaning if time ran out for either of the players
+    if (updatedClocks.white <= 0 || updatedClocks.black <= 0) {
+        const loser = updatedClocks.white <= 0 ? 'white' : 'black';
+        broadcastToGame(gameId, {
+            action: 'time-out',
+            loser: loser,
+        });
+        return;
+    };
+
+    // saving the move in the database
+    // rollback in-memory state on failure
+    let moveSaved;
+    try {
+        [moveSaved] = await db
+            .insert(moves)
+            .values({
+                gameId: gameId,
+                moveNumber: chess.history().length,
+                color: move.color === 'w' ? "white" : "black",
+                san: move.san,
+                uci: data.uci,
+                fenAfter: chess.fen(),
+                timeTaken: 2,
+                clockAfter: 2
+            })
+            .returning();
+    } catch (error) {
+        chess.undo();
+        ws.send(JSON.stringify({ action: 'server-error', gameId }));
+        console.error(`[handleMakeMove] DB insert error for game ${gameId}: `, error);
+        return;
+    };
+
+    // persisting first in the database above, then updating the in-memory state
+    activeGames.set(gameId, {
+        ...game,
+        activeColor: game.activeColor === 'white' ? 'black' : 'white',
+        clocks: updatedClocks,
+
+        // resetting the clock for the next player's turn
+        moveStartTime: now
+    });
+
+    // todo: game status validation --> checking whether there is a checkmate/draw/stalemate/three-fold-repetition
+    if (chess.isCheckmate) {
+        console.log('checkmate');
+        broadcastToGame(gameId, {
+            action: 'checkmate'
+        });
+
+        await db.update(games).set({
+            status: 'completed',
+            winner: data.playerId,
+        });
+        return;
+    }
+    else if (chess.isDraw) {
+        console.log('draw, shake hands!');
+        broadcastToGame(gameId, {
+            action: 'draw'
+        });
+
+        await db.update(games).set({
+            status: 'completed',
+            winner: 'draw'
+        });
+        return;
+    }
+    else if (chess.isStalemate) { console.log('stalemate') }
+    else if (chess.isThreefoldRepetition) { console.log('three fold repetition') }
+
+    // broadcasting information to both the players to keep them in sync
+    broadcastToGame(gameId, {
+        action: 'move-made',
+        fen: chess.fen(),
+        uci: uci,
+        san: move.san,
+        moveNumber: chess.history().length,
+
+        // keeping clients in sync with updated clocks
+        clocks: updatedClocks
+    });
+};
+
+export async function handleRegisterMove(ws: WebSocket, message: any) {
+    const { userId, opponentId, data } : { userId: string, opponentId: string, data: typeof moves.$inferInsert } = message;
+    console.log('user id: ', userId);
+    console.log('opponent id: ', opponentId);
+    console.log('data received in this ws: ', data);
+
+    const userSocket = onlineUsers.get(userId);
+    const opponentSocket = onlineUsers.get(opponentId);
+
+    console.log('type: ', typeof data.timeTaken);
+    console.log('type: ', typeof data.clockAfter);
+
+    try {
+        const existingGame = await fetchExistingGame(data.gameId);
+        if (!existingGame) return;
+
+        const move = (await db.insert(moves).values({ ...data, createdAt: new Date() }).returning())[0];
+        if (!move) {
+            // sending errors to both the sockets
+            userSocket.send(JSON.stringify({
+                action: 'db-insertion-error',
+                message: 'some error occured while insertion'
+            }));
+            opponentSocket.send(JSON.stringify({
+                action: 'db-insertion-error',
+                message: 'some error occured while insertion'
+            }));
+        };
+
+        // sending this message to the opponent socket to apply the same changes on his/her screen as well
+        opponentSocket.send(JSON.stringify({
+            action: 'move-successful',
+            message: 'successful move by the user',
+            move: move
+        }));
+    } catch (error) {
+        console.error('error while registering a move: ', error);
+        userSocket.send(JSON.stringify({
+            action: 'internal-server-error',
+            message: 'error'
+        }));
+        opponentSocket.send(JSON.stringify({
+            action: 'internal-server-error',
+            message: 'error'
+        }));
+    };
 };

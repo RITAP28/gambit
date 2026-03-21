@@ -5,7 +5,7 @@ import { useEffect } from 'react';
 import { Chessboard } from 'react-chessboard'
 
 const Game = () => {
-  const { chessGameRef, chessPosition, setChessPosition, playerColor, whiteTime, blackTime, capturedPieces, activeColor, moveHistory, status, playerMetadata, opponentMetadata } = useGame();
+  const { chessGameRef, chessPosition, setChessPosition, activeColor, moveHistory, status, playerMetadata, opponentMetadata, onDrop, canDragPiece } = useGame();
 
   // loading the initial piece positions after the first mount
   useEffect(() => {
@@ -27,20 +27,16 @@ const Game = () => {
           <div className="board-wrap">
             <Chessboard
               options={{
+                onPieceDrop: onDrop,
+                showAnimations: true,
                 position: chessPosition,
-                boardOrientation: "white",
-                darkSquareStyle: {
-                  'backgroundColor': "#4a7c59"
-                },
-                lightSquareStyle: {
-                  'backgroundColor': "#f0d9b5"
-                },
-                boardStyle: {
-                  'borderRadius': '6px'
-                },
-                squareStyle: {
-                  'borderRadius': '1px'
-                }
+                animationDurationInMs: 800,
+                boardOrientation: playerMetadata?.color === 'w' ? "white" : "black",
+                canDragPiece: canDragPiece,
+                darkSquareStyle: { 'backgroundColor': "#4a7c59" },
+                lightSquareStyle: { 'backgroundColor': "#f0d9b5" },
+                boardStyle: { 'borderRadius': '6px' },
+                squareStyle: { 'borderRadius': '1px' }
               }}
             />
           </div>

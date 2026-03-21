@@ -7,7 +7,7 @@ export const moveColorEnum = pgEnum("move_color_enum", ["white", "black"]);
 export const moves = pgTable("moves", {
     // related IDs
     id: uuid("id").defaultRandom().primaryKey(),
-    gameId: uuid("game_id").unique().references(() => games.id, { onDelete: 'cascade' }).notNull(),
+    gameId: uuid("game_id").references(() => games.id, { onDelete: 'cascade' }).notNull(),
 
     // metadata
     moveNumber: integer("move_number").notNull(),
@@ -19,7 +19,7 @@ export const moves = pgTable("moves", {
     // timestamps
     timeTaken: integer("time_taken_milliseconds").notNull(),
     clockAfter: integer("clock_after_milliseconds").notNull(),
-    createdAt: timestamp("created_at").notNull()
+    createdAt: timestamp("created_at").defaultNow().notNull()
 });
 
 // many-to-one relationship with game schema

@@ -1,4 +1,7 @@
 import 'dotenv/config'
+import { resolve } from 'path';
+
+require('dotenv').config({ path: resolve(__dirname, '../../../.env') })
 
 // access token constants
 export const ACCESS_TOKEN_SECRET_KEY = process.env.ACCESS_TOKEN_SECRET_KEY;
@@ -14,3 +17,5 @@ export const REFRESH_TOKEN_EXPIRY = process.env.REFRESH_TOKEN_EXPIRY;
 // configuration constants
 export const ENV = process.env.NODE_ENV;
 export const LIMIT = process.env.LIMIT;
+
+export const DATABASE_URL = process.env.DATABASE_URL;

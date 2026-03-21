@@ -32,8 +32,8 @@ export const games = pgTable("games", {
     tournamentId: uuid("tournament_id").references(() => tournaments.id),
 
     // timestamps
-    startedAt: timestamp("started_at").notNull(),
-    endedAt: timestamp("ended_at").notNull(),
+    startedAt: timestamp("started_at").defaultNow().notNull(),
+    endedAt: timestamp("ended_at"),
     createdAt: timestamp("created_at").defaultNow().notNull()
 });
 

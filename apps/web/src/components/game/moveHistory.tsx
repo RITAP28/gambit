@@ -1,5 +1,9 @@
-import type { IMoveHistoryProps } from "@repo/types";
+import type { Move } from "chess.js";
 import { useEffect, useRef } from "react";
+
+interface IMoveHistoryProps {
+    moves: Move[]
+}
 
 const MoveHistory = ({ moves }: IMoveHistoryProps) => {
     const ref = useRef<HTMLDivElement>(null);

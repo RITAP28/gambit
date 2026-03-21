@@ -31,10 +31,6 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
         }
     }, []);
 
-    // const handleMessageHandlers = (message: object) => {
-    //     console.log('message received: ', message)
-    // };
-
     const connectWebsocket = () => {
         if (!token || !user?.id) {
             console.log('Cannot connect: missing token or user');
@@ -68,7 +64,6 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
             try {
                 const message = JSON.parse(event.data);
                 console.log('received message from the server: ', message);
-                // handleMessageHandlers(message);
             } catch (error) {
                 console.error('error while parsing message: ', error);
             };

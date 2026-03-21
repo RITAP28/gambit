@@ -4,6 +4,7 @@ import * as schema from "./schema"
 import 'dotenv/config'
 
 const db_url = process.env.DATABASE_URL;
+console.log('db url: ', db_url);
 const sql = neon(db_url!)
 
 export const db = drizzle(sql, { schema })

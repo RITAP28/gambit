@@ -13,10 +13,6 @@ export interface IPlayerCardProps {
   time: number;
 }
 
-export interface IMoveHistoryProps {
-  moves: string[];
-}
-
 export interface IClockProps {
   userId: string;
   time: number;
