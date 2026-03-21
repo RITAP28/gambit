@@ -31,3 +31,19 @@ export const fetchExistingGame = async (gameId: string) => {
     throw new Error("Error while fetching game information");
   }
 }
+
+export const updateGameState = async (gameId: string, fen: string, updatedClocks: { white: number, black: number }) => {
+  try {
+    await db
+      .update(games)
+      .set({
+        currentFen: fen,
+        whiteTimeLeft: Math.floor(updatedClocks.white / 1000),
+        blackTimeLeft: Math.floor(updatedClocks.black / 1000)
+      })
+      .where(eq(games.id, gameId));
+  } catch (error) {
+    console.error('error while updating game state: ', error);
+    throw new Error("error while updating game state info");
+  }
+}

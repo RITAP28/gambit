@@ -4,7 +4,7 @@ import { activeGames, GameState, onlineUsers, usersSearchingForMatch } from "./s
 import { broadcastOnlineUsers, sendMessage } from "./connection";
 import { db } from "../../../packages/db/src";
 import { games } from "../../../packages/db/src/schema/game";
-import { fetchExistingGame, fetchUserSession } from "../../../packages/utils/src";
+import { fetchExistingGame, fetchUserSession, updateGameState } from "../../../packages/utils/src";
 import { moveColorEnum, moves } from '@repo/db/src/schema/moves';
 import { Chess } from "chess.js";
 import { broadcastToGame } from "./utils/broadcastToGame";
@@ -105,8 +105,8 @@ export async function handleMatchPlayer(ws: WebSocket, message: any) {
         moveStartTime: Date.now(),
 
         clocks: {
-            white: 300 * 1000,  // ms
-            black: 300 * 1000   // ms
+            white: 300 * 1000,  // sec
+            black: 300 * 1000   // sec
         }
     };
 
@@ -133,19 +133,13 @@ export async function handleMatchPlayer(ws: WebSocket, message: any) {
 
 export async function handleMakeMove(ws: WebSocket, message: { action: string, data: { gameId: string, playerId: string, uci: string, color: 'w' | 'b' } }) {
     const { action, data } = message;
-    console.log('action: ', action);
-    console.log('action: ', typeof action);
-    console.log('data: ', data);
     if (action !== 'possible-move') return;
 
     const gameId = data.gameId;
     const uci = data.uci;
 
     const game = activeGames.get(gameId);
-    if (!game) {
-        console.log('no game soprrry');
-        return;
-    }
+    if (!game) return;
 
     const chess = game.chess;
 
@@ -153,8 +147,6 @@ export async function handleMakeMove(ws: WebSocket, message: { action: string, d
     const expectedColor = chess.turn() === 'w' ? 'white' : 'black';
     const isThisPlayersTurn = (expectedColor === 'white' && game.whitePlayerId === data.playerId) || (expectedColor === 'black' && game.blackPlayerId === data.playerId);
     if (!isThisPlayersTurn) {
-        console.log('illegal move');
-
         // sending notification to the player's socket making the wrong move
         ws.send(JSON.stringify({ action: 'not-your-turn', gameId }));
         return;
@@ -178,8 +170,8 @@ export async function handleMakeMove(ws: WebSocket, message: { action: string, d
     const moveColor = move.color === 'w' ? 'white' : 'black';
 
     const updatedClocks = {
-        white: moveColor === 'white' ? game.clocks.white - timeTaken : game.clocks.white,
-        black: moveColor === 'black' ? game.clocks.black - timeTaken : game.clocks.black
+        white: moveColor === 'white' ? game.clocks.white - timeTaken : game.clocks.white,   // ms
+        black: moveColor === 'black' ? game.clocks.black - timeTaken : game.clocks.black    // ms
     };
 
     // checking for time-out meaning if time ran out for either of the players
@@ -206,8 +198,8 @@ export async function handleMakeMove(ws: WebSocket, message: { action: string, d
                 san: move.san,
                 uci: data.uci,
                 fenAfter: chess.fen(),
-                timeTaken: 2,
-                clockAfter: 2
+                timeTaken: Math.floor(timeTaken / 1000),    // seconds
+                clockAfter: move.color === 'w' ? Math.floor(updatedClocks.white / 1000) : Math.floor(updatedClocks.black / 1000)    // seconds
             })
             .returning();
     } catch (error) {
@@ -218,7 +210,6 @@ export async function handleMakeMove(ws: WebSocket, message: { action: string, d
     };
 
     // persisting first in the database above, then updating the in-memory state
-    console.log('database insertion successful');
     activeGames.set(gameId, {
         ...game,
         activeColor: game.activeColor === 'white' ? 'black' : 'white',
@@ -257,6 +248,9 @@ export async function handleMakeMove(ws: WebSocket, message: { action: string, d
     }
     else if (chess.isStalemate()) { console.log('stalemate') }
     else if (chess.isThreefoldRepetition()) { console.log('three fold repetition') }
+
+    // updating game state inside the database
+    await updateGameState(gameId, chess.fen(), updatedClocks);
 
     // broadcasting information to both the players to keep them in sync
     broadcastToGame(gameId, {

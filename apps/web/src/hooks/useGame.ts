@@ -16,10 +16,13 @@ export const useGame = () => {
 
     // defining the game as a ref to have access to the latest game information/state within closures and across renders
     const chessGameRef = useRef(new Chess());
-    const timerRef = useRef<ReturnType<typeof setInterval>>(0);
+    const timerRef = useRef<ReturnType<typeof setInterval>>(null);
+    const activeColorRef = useRef<'w' | 'b'>('w');
+    const statusRef = useRef<"waiting" | "in_progress" | "completed" | "abandoned" | "aborted">("in_progress");
     const moveStartRef = useRef<number>(0);
 
     // states important for running the game
+    const [isFetched, setIsFetched] = useState<boolean>(false);
     const [chessPosition, setChessPosition] = useState<string>('');
 
     // opponent id & metadata states
@@ -29,7 +32,7 @@ export const useGame = () => {
 
     const [gameType, setGameType] = useState<"bullet" | "blitz" | "rapid" | "classical" | "daily" | null>(null)
     const [moveHistory, setMoveHistory] = useState<Move[]>([]);
-    const [status, setStatus] = useState<'playing' | 'check' | 'checkmate' | 'draw' | 'resigned'>('playing');
+    const [status, setStatus] = useState<"waiting" | "in_progress" | "completed" | "abandoned" | "aborted">("in_progress");
     const [activeColor, setActiveColor] = useState<'w' | 'b'>('w');
     const [capturedPieces, setCapturedPieces] = useState({ w: [], b: [] });
     const [lastMove, setLastMove] = useState<{ from: string, to: string }[]>([]);
@@ -74,6 +77,9 @@ export const useGame = () => {
 
         return () => ws.removeEventListener('message', handleMessage);
     }, [ws, handleMessage]);
+
+    useEffect(() => { activeColorRef.current = activeColor }, [activeColor]);
+    useEffect(() => { statusRef.current = status }, [status]);
 
     useEffect(() => {
         moveStartRef.current = Date.now();
@@ -159,6 +165,7 @@ export const useGame = () => {
         }
     }
 
+    // the player shall be able to move pieces of the same color and also when it is only his/her turn
     const canDragPiece = ({ piece }: PieceHandlerArgs) => piece.pieceType[0] === playerMetadata?.color;
 
     useEffect(() => {
@@ -188,8 +195,10 @@ export const useGame = () => {
                     setWhiteTime(dta.whiteTimeLeft);
                     setBlackTime(dta.blackTimeLeft);
                     setGameType(dta.timeControl);
+                    setChessPosition(dta.currentFen);
                     setStatus(dta.status);
                     setOpponentId(dta.blackPlayerId !== user.id ? dta.blackPlayerId : dta.whitePlayerId );
+                    setIsFetched(true);
                 }
             } catch (error) {
                 console.error('error while fetching game metadata: ', error);
@@ -240,20 +249,37 @@ export const useGame = () => {
     }, [user?.id, accessToken, opponentId, gameId])
 
     useEffect(() => {
+        if (!isFetched) return;
+
         timerRef.current = setInterval(() => {
-            if (status !== 'playing') clearInterval(timerRef.current);
-            if (activeColor === 'w') {
-                console.log(whiteTime);
-                setWhiteTime((t) => Math.max(0, t-1));
-            }
-            else if (activeColor === 'b') {
-                console.log(blackTime);
-                setBlackTime((t) => Math.max(0, t-1));
-            }
+            if (statusRef.current !== "in_progress") {
+                clearInterval(timerRef.current!);
+                return;
+            };
+
+            if (activeColorRef.current === 'w') {
+                setWhiteTime((t) => {
+                    if (t <= 1) {
+                        clearInterval(timerRef.current!);
+                        return 0;
+                    };
+
+                    return t-1;
+                });
+            } else if (activeColorRef.current === 'b') {
+                setBlackTime((t) => {
+                    if (t <= 1) {
+                        clearInterval(timerRef.current!);
+                        return 0;
+                    };
+
+                    return t-1;
+                });
+            };
         }, 1000);
 
-        return () => clearInterval(timerRef.current)
-    }, [activeColor, status]);
+        return () => clearInterval(timerRef.current!);
+    }, [isFetched]); // this hook fires only when the data is ready
 
     return { chessGameRef, chessPosition, setChessPosition, playerColor, blackTime, whiteTime, capturedPieces, activeColor, moveHistory, status, opponentMetadata, playerMetadata, onDrop, gameType, lastMove, canDragPiece }
 }
