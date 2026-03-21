@@ -30,7 +30,7 @@ const SearchPlayerModal = ({ ws, setModalOpen }: ISearchPlayerModalProps) => {
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-        <div className="bg-white dark:text-white dark:bg-zinc-900 rounded-lg shadow-xl w-full max-w-sm max-h-[90vh] overflow-y-auto p-2">
+        <div className="bg-neutral-700 text-white dark:bg-zinc-900 rounded-lg shadow-xl w-full max-w-sm max-h-[90vh] overflow-y-auto p-2">
             <div className="w-full flex justify-end items-center">
                 <button
                     type="button"
@@ -46,7 +46,7 @@ const SearchPlayerModal = ({ ws, setModalOpen }: ISearchPlayerModalProps) => {
             <div className="py-1 w-full flex justify-center items-center">
                 <button
                     type="button"
-                    className="tracking-tight text-sm px-2 py-1 bg-slate-200 hover:bg-slate-300 rounded-sm transition duration-300 ease-in-out"
+                    className="tracking-tight text-sm px-2 py-1 bg-neutral-900 hover:bg-neutral-800 hover:cursor-pointer rounded-sm transition duration-300 ease-in-out"
                     onClick={() => setModalOpen(false)}
                 >
                     Cancel

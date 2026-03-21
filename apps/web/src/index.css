@@ -123,6 +123,10 @@
     }
 }
 
+body {
+  font-family: 'Space Grotesk', sans-serif;
+}
+
 /* ----------------- topbar ----------------- */
 .topbar {
     display: flex;
