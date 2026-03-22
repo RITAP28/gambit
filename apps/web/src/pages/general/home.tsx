@@ -1,4 +1,6 @@
+import ActivityGraph from "@/components/home/activityGraph";
 import Navbar from "@/components/home/navbar";
+import Profile from "@/components/home/profile";
 import SearchPlayerModal from "@/components/modals/searchPlayerModal";
 import { useWebSocket } from "@/hooks/useWebSocket";
 import config from "@/infra/activeconfig";
@@ -6,18 +8,31 @@ import { useAppSelector } from "@/redux/hook"
 import { logout } from "@/redux/slices/auth.slice";
 import axios from "axios";
 import { Plus } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useDispatch } from "react-redux";
 import { useNavigate } from "react-router-dom";
+
+export type ActivityDay = {
+  date: string;
+  played: number;
+  won: number;
+  lost: number;
+  draw: number;
+};
 
 const Home = () => {
   const dispatch = useDispatch();
   const navigate = useNavigate();
   const { user } = useAppSelector((state) => state.auth);
-  const { ws, sendMessage } = useWebSocket();
+  const { ws } = useWebSocket();
+
+  const hasFetched = useRef<boolean>(false);
 
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
+  const [activityLoading, setActivityLoading] = useState<boolean>(false);
+  const [activityError, setActivityError] = useState<string | null>(null);
+  const [data, setData] = useState<ActivityDay[]>([]);
 
   const [searchModalOpen, setSearchModalOpen] = useState<boolean>(false);
 
@@ -49,15 +64,61 @@ const Home = () => {
     }
   };
 
-  const handleSearchPlayers = () => {
-    if (!user || !ws) return;
-    sendMessage('join-match-making', { userId: user.id });
-    setSearchModalOpen(true);
-  };
+  // const handleSearchPlayers = () => {
+  //   if (!user || !ws) return;
+  //   sendMessage('join-match-making', { userId: user.id });
+  //   setSearchModalOpen(true);
+  // };
+
+  useEffect(() => {
+    if (!user && hasFetched.current) return;
+
+    hasFetched.current = true;
+
+    const fetchUserActivity = async () => {
+        setActivityLoading(true);
+        setActivityError(null);
+        setData([]);
+
+        try {
+            const response = await axios.post(
+                `${config.DEV_BASE_URL}`,
+                {
+                    action: 'get-user-activity',
+                    data: { userId: user?.id }
+                },
+                {
+                    headers: {
+                        "Content-Type": "application/json",
+                        "Authorization": `Bearer ${user?.accessToken}`
+                    }
+                }
+            );
+
+            if (response.status === 200) {
+                console.log('response data: ', response.data.activity);
+                setData(response.data.activity);
+            }
+        } catch (error) {
+            if (axios.isAxiosError(error)) {
+                const status = error.response?.status;
+
+                if (status === 404) setActivityError("user not found");
+                else if (status === 400) setActivityError("validation failed");
+            } else {
+                setActivityError("unexpected error, please try again");
+            }
+        };
+
+        setActivityLoading(false);
+    };
+
+    fetchUserActivity();
+  }, [user]);
 
   return (
     <div className="w-full h-screen flex flex-col bg-neutral-900">
-      <Navbar />
+      <Navbar loading={loading} error={error} handleLogout={handleLogout} />
     
       {!user && (
         <div className="w-full h-screen flex flex-col justify-center items-center">
@@ -85,13 +146,13 @@ const Home = () => {
             </div>
 
             {/* Bottom Section (Email) */}
-            <div className="text-sm text-gray-400 border-t border-neutral-800 pt-4">ritap@example.com</div>
+            {/* <div className="text-sm text-gray-400 border-t border-neutral-800 pt-4">ritap@example.com</div> */}
           </aside>
 
           {/* Main Content */}
           <main className="w-[65%] p-6">
             <h1 className="text-3xl font-space font-bold mb-4 text-neutral-400">Welcome Back, <span className="text-amber-600">{user.name}</span></h1>
-            <p className="text-gray-400">Start a new game or continue where you left off.</p>
+            {/* <p className="text-gray-400">Start a new game or continue where you left off.</p> */}
             <div className="w-full flex flex-row gap-2 pt-4">
               <button type="button" className="px-4 py-2 hover:cursor-pointer hover:bg-neutral-800 border-[0.3px] border-neutral-600 rounded-md text-amber-600 transition duration-300 ease-in-out" onClick={() => setSearchModalOpen(true)}>Play Solo</button>
               <button type="button" className="px-4 py-2 hover:cursor-pointer hover:bg-neutral-800 border-[0.3px] border-neutral-600 rounded-md text-amber-600 transition duration-300 ease-in-out">Participate</button>
@@ -101,11 +162,12 @@ const Home = () => {
             {/* activity graph */}
             <div className="w-full flex flex-col gap-2 pt-8">
               <p className="font-medium text-neutral-400">Your activity graph:</p>
+              <ActivityGraph loading={activityLoading} error={activityError} data={data} />
             </div>
           </main>
 
           <aside className="w-[20%] text-white border-l border-neutral-800">
-            User Profile
+            <Profile loading={activityLoading} error={activityError} data={data} />
           </aside>
         </div>
       )}

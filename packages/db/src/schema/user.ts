@@ -8,7 +8,6 @@ import { profiles } from "./profile";
 
 export const authProviderEnum = pgEnum("authProviderEnum", ["credentials", "google"]);
 export const users = pgTable("users", {
-    //IDs
     id: uuid("id").primaryKey().defaultRandom(),
 
     // metadata

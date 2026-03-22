@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { eq, or } from "drizzle-orm";
 import { db, users, sessions } from "@repo/db";
 import { games } from "@repo/db/src/schema/game";
 

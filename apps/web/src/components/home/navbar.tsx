@@ -1,7 +1,7 @@
 import { useAppSelector } from "@/redux/hook";
 import { useState } from "react";
 
-export default function Navbar() {
+export default function Navbar({ handleLogout }: { loading: boolean; error: string | null; handleLogout: () => Promise<void> }) {
   const { user } = useAppSelector((state) => state.auth);
   const [isOpen, setIsOpen] = useState(false);
 
@@ -32,7 +32,13 @@ export default function Navbar() {
           )}
           {user && (
             <>
-            <button type="button" className="px-4 py-1 bg-white text-black rounded hover:bg-gray-200 transition text-sm">Logout</button>
+            <button
+              type="button"
+              className="px-4 py-1 bg-white text-black rounded hover:bg-gray-200 transition text-sm"
+              onClick={handleLogout}
+            >
+              Logout
+            </button>
             </>
           )}
         </div>
