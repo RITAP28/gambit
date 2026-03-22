@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { activeGames } from '../server';
 import { Chess } from 'chess.js';
 import { handleMakeMove } from '../messageHandler';
+import { broadcastToGame } from '../utils/broadcastToGame';
 
 vi.mock('@repo/db', () => ({
     db: {
@@ -15,9 +16,19 @@ vi.mock('@repo/db', () => ({
                     uci: 'e2e4',
                 }])
             })
+        }),
+
+        update: vi.fn().mockReturnValue({
+            set: vi.fn().mockReturnValue({
+                where: vi.fn().mockResolvedValue(undefined)
+            })
         })
     }
 }));
+
+vi.mock('../utils/broadcastToGame.ts', () => ({
+    broadcastToGame: vi.fn()
+}))
 
 const mockWs = (playerId: string) => ({
     playerId,
@@ -27,7 +38,7 @@ const mockWs = (playerId: string) => ({
 describe('handleMakeMove', () => {
     const gameId = 'game-123';
     beforeEach(() => {
-        // Fresh game state before each test
+        vi.clearAllMocks();
         activeGames.set(gameId, {
             gameId,
             whitePlayerId: 'player-white',
@@ -36,20 +47,32 @@ describe('handleMakeMove', () => {
             activeColor: 'white',
             lastMove: '',
             lastMoveTime: 0,
-            moveStartTime: Date.now(),
+            moveStartTime: Date.now() - 3000,
             clocks: { white: 300_000, black: 300_000 },
         });
     });
 
+    it('broadcasts move to both players', async () => {
+        const ws = mockWs('player-white');
+        // await handleMakeMove(ws as any, makeMessage(gameId, 'e2e4'));
+        await handleMakeMove(ws as any, { action: 'possible-move', data: { gameId: gameId, playerId: 'player-white', uci: 'e2e4', color: 'w' } });
+
+        expect(broadcastToGame).toHaveBeenCalledWith(gameId, expect.objectContaining({
+            action: 'move-successful',
+        }));
+    });
+
+    // check passed
     it('rejects move if game does not exist', async () => {
         const ws = mockWs('player-white');
         await handleMakeMove(ws as any, { action: 'possible-move', data: { gameId: 'nonexistent-game', playerId: 'player-white', uci: 'e2e4', color: 'w' } });
         expect(ws.send).not.toHaveBeenCalled();
     });
 
+    // check passed
     it('rejects move if it is not the player\'s turn', async () => {
         const ws = mockWs('player-black');
-        await handleMakeMove(ws as any, { action: 'possible-move', data: { gameId: gameId, playerId: 'player-black', uci: 'e7e5', color: 'w' } });
+        await handleMakeMove(ws as any, { action: 'possible-move', data: { gameId: gameId, playerId: 'player-black', uci: 'e7e5', color: 'b' } });
 
         const response = JSON.parse(ws.send.mock.calls[0][0]);
         expect(response.action).toBe('not-your-turn');
@@ -79,7 +102,8 @@ describe('handleMakeMove', () => {
         await handleMakeMove(ws as any, { action: 'possible-move', data: { gameId: gameId, playerId: 'player-white', uci: 'e2e4', color: 'w' } });
 
         const after = activeGames.get(gameId)!.clocks.white;
-        expect(after).toBeLessThan(before); // white clock decreased
+        expect(after).toBeLessThan(300_000);         // decreased from 300,000ms
+        expect(after).toBeGreaterThan(290_000);
         expect(activeGames.get(gameId)!.clocks.black).toBe(300_000); // black untouched
     });
 

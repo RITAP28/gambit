@@ -152,16 +152,18 @@ export async function handleMakeMove(ws: WebSocket, message: { action: string, d
         return;
     };
 
-    // applying move via chess.js
-    const move = chess.move({
-        from: data.uci.slice(0,2),
-        to: data.uci.slice(2,4),
-        promotion: data.uci[4] || 'q'
-    });
-    if (!move) {
+    let move;
+    try {
+        // applying move via chess.js
+        move = chess.move({
+            from: data.uci.slice(0,2),
+            to: data.uci.slice(2,4),
+            promotion: data.uci[4] ?? 'q'
+        });
+    } catch (error) {
         ws.send(JSON.stringify({ action: 'illegal-move', gameId: gameId }));
         return;
-    };
+    }
 
     // todo: clock management --> configuring the clocks to avoid any cheating based on time
     const now = Date.now();

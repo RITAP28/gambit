@@ -1,5 +1,8 @@
 {
   "compilerOptions": {
-    "types": ["node"]
+    "types": ["node"],
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "target": "ESNext"
   }
 }
