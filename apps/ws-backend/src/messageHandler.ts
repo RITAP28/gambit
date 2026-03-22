@@ -5,7 +5,7 @@ import { broadcastOnlineUsers, sendMessage } from "./connection";
 import { db } from "../../../packages/db/src";
 import { games } from "../../../packages/db/src/schema/game";
 import { fetchExistingGame, fetchUserSession, updateGameState } from "../../../packages/utils/src";
-import { moveColorEnum, moves } from '@repo/db/src/schema/moves';
+import { moves } from '@repo/db/src/schema/moves';
 import { Chess } from "chess.js";
 import { broadcastToGame } from "./utils/broadcastToGame";
 
