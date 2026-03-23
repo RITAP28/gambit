@@ -8,6 +8,10 @@ import { defineConfig, globalIgnores } from 'eslint/config'
 export default defineConfig([
   globalIgnores(['dist']),
   {
+    parserOptions: {
+      tsconfigRootDir: __dirname,
+      project: ['./tsconfig.json'],
+    },
     files: ['**/*.{ts,tsx}'],
     extends: [
       js.configs.recommended,

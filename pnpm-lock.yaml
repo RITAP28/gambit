@@ -295,6 +295,12 @@ importers:
       '@repo/db':
         specifier: workspace:^
         version: link:../../packages/db
+      '@repo/types':
+        specifier: workspace:^
+        version: link:../../packages/types
+      '@repo/utils':
+        specifier: workspace:^
+        version: link:../../packages/utils
       chess.js:
         specifier: ^1.4.0
         version: 1.4.0

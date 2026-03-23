@@ -3,6 +3,7 @@ import { users } from "./user";
 import { tournaments } from "./tournament";
 import { relations } from "drizzle-orm";
 import { timeControlEnum, gameStatusEnum, terminationEnum } from "./enums";
+import { chatMessages } from "./chat";
 
 export const games = pgTable("games", {
     // IDs related to the game
@@ -37,7 +38,7 @@ export const games = pgTable("games", {
     createdAt: timestamp("created_at").defaultNow().notNull()
 });
 
-export const gamesRelationWithUser = relations(games, ({ one }) => ({
+export const gamesRelationWithUser = relations(games, ({ one, many }) => ({
     whitePlayer: one(users, {
         fields: [games.whitePlayerId],
         references: [users.id],
@@ -51,5 +52,6 @@ export const gamesRelationWithUser = relations(games, ({ one }) => ({
     tournament: one(tournaments, {
         fields: [games.tournamentId],
         references: [tournaments.id]
-    })
+    }),
+    chats: many(chatMessages)
 }))

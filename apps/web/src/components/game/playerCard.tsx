@@ -3,7 +3,7 @@ import Clock from "./clock"
 
 const PlayerCard = ({ id, username, rating, color, isActive, time }: IPlayerCardProps) => {
   return (
-    <div className={`player-card ${isActive ? "player-card--active" : ""}`}>
+    <div className={`player-card ${isActive ? "player-card--active" : ""} border-[0.3px] border-neutral-700`}>
         <div className="player-card__avatar" data-color={color}>
             {username}
         </div>

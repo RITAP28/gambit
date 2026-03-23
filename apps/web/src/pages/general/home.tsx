@@ -24,7 +24,7 @@ const Home = () => {
   const dispatch = useDispatch();
   const navigate = useNavigate();
   const { user } = useAppSelector((state) => state.auth);
-  const { ws } = useWebSocket();
+  const { ws, sendMessage } = useWebSocket();
 
   const hasFetched = useRef<boolean>(false);
 
@@ -64,11 +64,11 @@ const Home = () => {
     }
   };
 
-  // const handleSearchPlayers = () => {
-  //   if (!user || !ws) return;
-  //   sendMessage('join-match-making', { userId: user.id });
-  //   setSearchModalOpen(true);
-  // };
+  const handleSearchPlayers = () => {
+    if (!user || !ws) return;
+    sendMessage('join-match-making', { userId: user.id });
+    setSearchModalOpen(true);
+  };
 
   useEffect(() => {
     if (!user && hasFetched.current) return;
@@ -154,9 +154,25 @@ const Home = () => {
             <h1 className="text-3xl font-space font-bold mb-4 text-neutral-400">Welcome Back, <span className="text-amber-600">{user.name}</span></h1>
             {/* <p className="text-gray-400">Start a new game or continue where you left off.</p> */}
             <div className="w-full flex flex-row gap-2 pt-4">
-              <button type="button" className="px-4 py-2 hover:cursor-pointer hover:bg-neutral-800 border-[0.3px] border-neutral-600 rounded-md text-amber-600 transition duration-300 ease-in-out" onClick={() => setSearchModalOpen(true)}>Play Solo</button>
-              <button type="button" className="px-4 py-2 hover:cursor-pointer hover:bg-neutral-800 border-[0.3px] border-neutral-600 rounded-md text-amber-600 transition duration-300 ease-in-out">Participate</button>
-              <button type="button" className="px-4 py-2 hover:cursor-pointer hover:bg-neutral-800 border-[0.3px] border-neutral-600 rounded-md text-amber-600 transition duration-300 ease-in-out">Make your own tournament</button>
+              <button
+                type="button"
+                className="px-4 py-2 hover:cursor-pointer hover:bg-neutral-800 border-[0.3px] border-neutral-600 rounded-md text-amber-600 transition duration-300 ease-in-out"
+                onClick={handleSearchPlayers}
+              >
+                Play Solo
+              </button>
+              <button
+                type="button"
+                className="px-4 py-2 hover:cursor-pointer hover:bg-neutral-800 border-[0.3px] border-neutral-600 rounded-md text-amber-600 transition duration-300 ease-in-out"
+              >
+                Participate
+              </button>
+              <button
+                type="button"
+                className="px-4 py-2 hover:cursor-pointer hover:bg-neutral-800 border-[0.3px] border-neutral-600 rounded-md text-amber-600 transition duration-300 ease-in-out"
+              >
+                Make your own tournament
+              </button>
             </div>
 
             {/* activity graph */}

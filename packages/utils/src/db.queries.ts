@@ -1,6 +1,7 @@
-import { eq, or } from "drizzle-orm";
+import { asc, eq, or } from "drizzle-orm";
 import { db, users, sessions } from "@repo/db";
 import { games } from "@repo/db/src/schema/game";
+import { chatMessages } from "@repo/db/src/schema/chat";
 
 export const fetchUserSession = async (userId: string) => {
   try {
@@ -47,3 +48,23 @@ export const updateGameState = async (gameId: string, fen: string, updatedClocks
     throw new Error("error while updating game state info");
   }
 }
+
+export const insertChatMessage = async (
+    gameId: string,
+    senderId: string,
+    message: string
+) => {
+    const [saved] = await db
+        .insert(chatMessages)
+        .values({ gameId, senderId, message })
+        .returning();
+    return saved;
+};
+
+export const getChatHistory = async (gameId: string) => {
+    return db
+        .select()
+        .from(chatMessages)
+        .where(eq(chatMessages.gameId, gameId))
+        .orderBy(asc(chatMessages.createdAt));
+};

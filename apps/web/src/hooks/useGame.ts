@@ -8,6 +8,14 @@ import type { PieceDropHandlerArgs, PieceHandlerArgs } from "react-chessboard";
 import { useParams } from "react-router-dom";
 import { useWebSocket } from "./useWebSocket";
 
+interface ChatMessage {
+    id: string;
+    gameId: string;
+    senderId: string;
+    message: string;
+    createdAt: string;
+}
+
 export const useGame = () => {
     const { ws, sendMessage } = useWebSocket();
     const user = useAppSelector((state) => state.auth.user);
@@ -40,6 +48,9 @@ export const useGame = () => {
     const [blackTime, setBlackTime] = useState<number>(0);
     const [playerColor] = useState<'w' | 'b'>('w');
 
+    const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+    const [chatInput, setChatInput] = useState<string>('');
+
     const handleMessage = useCallback((event: MessageEvent) => {
         const message = JSON.parse(event.data);
         console.log('message received: ', message);
@@ -68,6 +79,8 @@ export const useGame = () => {
 
             setWhiteTime(Math.floor(moveDta.clocks.white / 1000));
             setBlackTime(Math.floor(moveDta.clocks.black / 1000));
+        } else if (message.action === 'chat-message') {
+            setChatMessages((prev) => [ ...prev, message.data ]);
         }
     }, []);
 
@@ -189,7 +202,8 @@ export const useGame = () => {
                 );
 
                 if (response.status === 200) {
-                    const dta = response.data.metadata;
+                    const dta = response.data.metadata.game;
+                    const chatHistory = response.data.metadata.chatHistory;
                     console.log('game metadata fetched: ', dta);
 
                     setWhiteTime(dta.whiteTimeLeft);
@@ -199,6 +213,7 @@ export const useGame = () => {
                     setStatus(dta.status);
                     setOpponentId(dta.blackPlayerId !== user.id ? dta.blackPlayerId : dta.whitePlayerId );
                     setIsFetched(true);
+                    setChatMessages(chatHistory);
                 }
             } catch (error) {
                 console.error('error while fetching game metadata: ', error);
@@ -281,5 +296,21 @@ export const useGame = () => {
         return () => clearInterval(timerRef.current!);
     }, [isFetched]); // this hook fires only when the data is ready
 
-    return { chessGameRef, chessPosition, setChessPosition, playerColor, blackTime, whiteTime, capturedPieces, activeColor, moveHistory, status, opponentMetadata, playerMetadata, onDrop, gameType, lastMove, canDragPiece }
+    const sendChatMessage = useCallback(() => {
+        const trimmed = chatInput.trim();
+        if (!trimmed || trimmed.length === 0) return;
+        if (trimmed.length > 120) return;
+
+        sendMessage('send-chat', {
+            data: {
+                gameId,
+                senderId: user?.id,
+                message: trimmed,
+            }
+        });
+
+        setChatInput(''); // clear input immediately
+    }, [chatInput, gameId, sendMessage, user?.id]);
+
+    return { chessGameRef, chessPosition, setChessPosition, playerColor, blackTime, whiteTime, capturedPieces, activeColor, moveHistory, status, opponentMetadata, playerMetadata, onDrop, gameType, lastMove, canDragPiece, chatMessages, chatInput, setChatInput, sendChatMessage }
 }

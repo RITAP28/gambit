@@ -1,14 +1,21 @@
 import MoveHistory from '@/components/game/moveHistory';
 import PlayerCard from '@/components/game/playerCard';
 import { useGame } from '@/hooks/useGame';
-import { useEffect } from 'react';
+import { useAppSelector } from '@/redux/hook';
+import { useEffect, useRef } from 'react';
 import { Chessboard } from 'react-chessboard'
 
 const Game = () => {
-  const { chessGameRef, chessPosition, setChessPosition, activeColor, moveHistory, status, playerMetadata, opponentMetadata, onDrop, canDragPiece, whiteTime, blackTime } = useGame();
+  const { user } = useAppSelector((state) => state.auth);
+  const { chessGameRef, chessPosition, setChessPosition, activeColor, moveHistory, status, playerMetadata, opponentMetadata, onDrop, canDragPiece, whiteTime, blackTime, chatMessages, chatInput, setChatInput, sendChatMessage } = useGame();
 
   const playerTime = playerMetadata?.color === 'w' ? whiteTime : blackTime;
   const opponentTime = opponentMetadata?.color === 'w' ? whiteTime : blackTime;
+  const chatBottomRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    chatBottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [chatMessages]);
 
   // loading the initial piece positions after the first mount
   useEffect(() => {
@@ -16,8 +23,8 @@ const Game = () => {
   }, []);
 
   return (
-    <div className='game'>
-      <header className="topbar w-full flex flex-row gap-2 items-center justify-center bg-white">
+    <div className='game bg-neutral-900 text-white'>
+      <header className="topbar w-full flex flex-row gap-2 items-center justify-center bg-neutral-900 border-b-[0.3px] border-neutral-600">
         <div className="topbar__logo">Gambit</div>
         <div className="topbar__info">Rated • Classical 10+0</div>
         <button type="button" className="topbar__abort">Abort</button>
@@ -49,21 +56,21 @@ const Game = () => {
         {/* right board view */}
         <aside className="sidebar">
           {/* move history */}
-          <div className="sidebar__section">
-            <h3 className="sidebar__heading">Move History</h3>
+          <div className="sidebar__section border-[0.3px] border-neutral-700">
+            <h3 className="sidebar__heading border-b-[0.3px] border-neutral-700">Move History</h3>
             <MoveHistory moves={moveHistory} />
           </div>
           <div className="sidebar__actions">
             <button
-              className="btn btn--ghost"
-              disabled={status !== "playing"}
+              className="btn--ghost w-full py-1 rounded-md hover:cursor-pointer border-[0.3px] border-neutral-700 transition duration-300 ease-in-out"
+              disabled={status !== "in_progress"}
               title="Offer Draw"
             >
               ½ Draw
             </button>
             <button
-              className="btn btn--danger"
-              disabled={status !== "playing"}
+              className="btn--danger w-full py-1 rounded-md hover:cursor-pointer border-[0.3px] border-neutral-700 transition duration-300 ease-in-out"
+              disabled={status !== "in_progress"}
               title="Resign"
             >
               ⚑ Resign
@@ -73,11 +80,37 @@ const Game = () => {
           <div className="sidebar__section sidebar__chat">
             <h3 className="sidebar__heading">Chat</h3>
             <div className="chat-messages">
-              <p className="chat__placeholder">GG and good luck!</p>
+              {chatMessages.length === 0 && (
+                <p className="chat__placeholder">GG and good luck!</p>
+              )}
+              {chatMessages.map((msg) => (
+                <div
+                  key={msg.id}
+                  className={`chat__message ${msg.senderId === user?.id ? 'chat__message--self' : 'chat__message--opponent'}`}
+                >
+                  <span className="chat__message-text">{msg.message}</span>
+                </div>
+              ))}
             </div>
+
             <div className="chat-input-row">
-              <input className="chat-input" placeholder="Type a message…" maxLength={120} />
-              <button className="btn btn--send">↑</button>
+              <input
+                className="chat-input"
+                placeholder="Type a message…"
+                maxLength={120}
+                value={chatInput}
+                onChange={(e) => setChatInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') sendChatMessage();
+                }}
+              />
+              <button
+                className="btn btn--send"
+                onClick={sendChatMessage}
+                disabled={!chatInput.trim()}
+              >
+                ↑
+              </button>
             </div>
           </div>
         </aside>

@@ -19,3 +19,6 @@ export const ENV = process.env.NODE_ENV;
 export const LIMIT = process.env.LIMIT;
 
 export const DATABASE_URL = process.env.DATABASE_URL;
+
+// chat constants
+export const MAX_MESSAGE_LENGTH = 120;

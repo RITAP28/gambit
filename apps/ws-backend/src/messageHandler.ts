@@ -1,13 +1,15 @@
-import { verifyAccessToken } from "@repo/auth";
+import { verifyAccessToken } from "@repo/auth/src/jwt/verify";
 import { WebSocket } from "ws";
 import { activeGames, GameState, onlineUsers, usersSearchingForMatch } from "./server";
 import { broadcastOnlineUsers, sendMessage } from "./connection";
 import { db } from "../../../packages/db/src";
 import { games } from "../../../packages/db/src/schema/game";
-import { fetchExistingGame, fetchUserSession, updateGameState } from "../../../packages/utils/src";
 import { moves } from '@repo/db/src/schema/moves';
 import { Chess } from "chess.js";
 import { broadcastToGame } from "./utils/broadcastToGame";
+import { fetchExistingGame, fetchUserSession, insertChatMessage, updateGameState } from '@repo/utils/src/db.queries'
+import { ChatMessage } from "@repo/types";
+import { MAX_MESSAGE_LENGTH } from "@repo/utils/src/constants";
 
 export async function handleUserConnection(ws: WebSocket, message: any, currentUserId: string | null) {
     const { userId, accessToken } = message;
@@ -315,4 +317,57 @@ export async function handleRegisterMove(ws: WebSocket, message: any) {
             message: 'error'
         }));
     };
+};
+
+export const handleChat = async (ws: WebSocket, payload: ChatMessage) => {
+    const { data } = payload;
+    const { gameId, senderId, message } = data;
+
+    // 1. Game existence check
+    const game = activeGames.get(gameId);
+    if (!game) {
+        ws.send(JSON.stringify({ action: 'chat-error', error: 'game-not-found' }));
+        return;
+    }
+
+    // 2. Sender must be one of the two players — no outsiders
+    const isPlayer = game.whitePlayerId === senderId || game.blackPlayerId === senderId;
+    if (!isPlayer) {
+        ws.send(JSON.stringify({ action: 'chat-error', error: 'not-a-player' }));
+        return;
+    }
+
+    // 3. Sanitize — trim and enforce length
+    const trimmed = message.trim();
+    if (!trimmed || trimmed.length === 0) return;
+    if (trimmed.length > MAX_MESSAGE_LENGTH) {
+        ws.send(JSON.stringify({
+            action: 'chat-error',
+            error: 'message-too-long',
+            max: MAX_MESSAGE_LENGTH
+        }));
+        return;
+    }
+
+    // 4. Persist
+    let saved;
+    try {
+        saved = await insertChatMessage(gameId, senderId, trimmed);
+    } catch (err) {
+        console.error(`[handleChat] DB insert failed for game ${gameId}:`, err);
+        ws.send(JSON.stringify({ action: 'chat-error', error: 'server-error' }));
+        return;
+    }
+
+    // 5. Broadcast to both players
+    broadcastToGame(gameId, {
+        action: 'chat-message',
+        data: {
+            id: saved.id,
+            gameId,
+            senderId,
+            message: trimmed,
+            createdAt: saved.createdAt,
+        }
+    });
 };

@@ -1,7 +1,7 @@
 import { WebSocket } from "ws";
 import { onlineUsers } from "./server";
 import { IncomingMessage } from "node:http";
-import { handleMakeMove, handleMatchPlayer, handleRegisterMove, handleUserConnection } from "./messageHandler";
+import { handleChat, handleMakeMove, handleMatchPlayer, handleRegisterMove, handleUserConnection } from "./messageHandler";
 
 export const sendMessage = (ws: WebSocket, type: string, data: {}) => {
     if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type, ...data }));
@@ -37,6 +37,8 @@ export function handleConnection(ws: WebSocket, req: IncomingMessage){
                     case 'possible-move':
                         handleMakeMove(ws, message);
                         break;
+                    case 'send-chat':
+                        handleChat(ws, message);
                     default:
                         break;
                 }

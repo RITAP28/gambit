@@ -30,3 +30,12 @@ export interface IPlayerMetadataProps {
   isActive: boolean;
   capturedBy: []
 }
+
+export interface ChatMessage {
+    action: string;
+    data: {
+        gameId: string;
+        senderId: string;
+        message: string;
+    };
+}
