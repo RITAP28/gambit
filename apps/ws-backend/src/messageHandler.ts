@@ -7,7 +7,7 @@ import { games } from "../../../packages/db/src/schema/game";
 import { moves } from '@repo/db/src/schema/moves';
 import { Chess } from "chess.js";
 import { broadcastToGame } from "./utils/broadcastToGame";
-import { fetchExistingGame, fetchUserSession, insertChatMessage, updateGameState } from '@repo/utils/src/db.queries'
+import { endGame, fetchExistingGame, fetchUserSession, insertChatMessage, updateGameState } from '@repo/utils/src/db.queries'
 import { ChatMessage } from "@repo/types";
 import { MAX_MESSAGE_LENGTH } from "@repo/utils/src/constants";
 
@@ -101,6 +101,7 @@ export async function handleMatchPlayer(ws: WebSocket, message: any) {
 
         chess: new Chess(),
         activeColor: 'white',
+        status: 'in_progress',
 
         lastMove: '',
         lastMoveTime: 0,
@@ -141,7 +142,10 @@ export async function handleMakeMove(ws: WebSocket, message: { action: string, d
     const uci = data.uci;
 
     const game = activeGames.get(gameId);
-    if (!game) return;
+    if (!game) {
+        console.log('sdc')
+        return;
+    }
 
     const chess = game.chess;
 
@@ -223,35 +227,58 @@ export async function handleMakeMove(ws: WebSocket, message: { action: string, d
         moveStartTime: now
     });
 
-    // todo: game status validation --> checking whether there is a checkmate/draw/stalemate/three-fold-repetition
+    // todo: game status validation --> checking whether there is a checkmate/draw (stalemate/three-fold-repetition)
     if (chess.isCheckmate()) {
-        console.log('checkmate');
+        activeGames.set(gameId, { ...game, status: 'completed' });
+        await endGame(gameId, false, false, false, false, 'checkmate', data.playerId, data.color === 'w' ? 'white' : 'black');
         broadcastToGame(gameId, {
-            action: 'checkmate',
-            data: {}
+            action: 'game-over',
+            data: {
+                reason: 'checkmate',
+                winner: data.playerId,
+                color: data.color === 'w' ? 'white' : 'black', // winner color
+                resignedBy: null
+            }
         });
 
-        await db.update(games).set({
-            status: 'completed',
-            winner: data.playerId,
-        });
+        // deleting the game from the memory within a 5 second window
+        setTimeout(() => activeGames.delete(gameId), 5000);
         return;
-    }
-    else if (chess.isDraw()) {
-        console.log('draw, shake hands!');
+    } else if (chess.isDraw()) {
+        activeGames.set(gameId, { ...game, status: 'draw' });
+        const drawReason = chess.isStalemate() ? 'stalemate' 
+                        : chess.isThreefoldRepetition() ? 'threefold-repetition' 
+                        : chess.isInsufficientMaterial ? 'insufficient material' 
+                        : 'fifty-move rule';
+
+        await endGame(
+            gameId,
+            false,
+            true,
+            false,
+            false,
+            drawReason === 'stalemate' ? 'stalemate'
+            : drawReason === 'threefold-repetition' ? 'threefold_repetition' 
+            : drawReason === 'fifty-move rule' ? 'fifty_move_rule' 
+            : 'insufficient_material',
+            'completed',
+            null
+        );
+
         broadcastToGame(gameId, {
-            action: 'draw',
-            data: {}
+            action: 'game-over',
+            data: {
+                reason: drawReason,
+                winner: null,
+                color: null,
+                resignedBy: null
+            }
         });
 
-        await db.update(games).set({
-            status: 'completed',
-            winner: 'draw'
-        });
+        // deleting the game from the memory within a 5 second window
+        setTimeout(() => activeGames.delete(gameId), 5000);
         return;
     }
-    else if (chess.isStalemate()) { console.log('stalemate') }
-    else if (chess.isThreefoldRepetition()) { console.log('three fold repetition') }
 
     // updating game state inside the database
     await updateGameState(gameId, chess.fen(), updatedClocks);
@@ -273,9 +300,6 @@ export async function handleMakeMove(ws: WebSocket, message: { action: string, d
 
 export async function handleRegisterMove(ws: WebSocket, message: any) {
     const { userId, opponentId, data } : { userId: string, opponentId: string, data: typeof moves.$inferInsert } = message;
-    console.log('user id: ', userId);
-    console.log('opponent id: ', opponentId);
-    console.log('data received in this ws: ', data);
 
     const userSocket = onlineUsers.get(userId);
     const opponentSocket = onlineUsers.get(opponentId);
@@ -370,4 +394,62 @@ export const handleChat = async (ws: WebSocket, payload: ChatMessage) => {
             createdAt: saved.createdAt,
         }
     });
+};
+
+export async function handleRequestResign (ws: WebSocket, message: { action: string, data: { gameId: string, resignedBy: string } }) {
+    const { gameId, resignedBy } = message.data;
+
+    // as the user has requested resignation from the game, the metadata shall be updated in the database
+    // the game shall be deleted from the server memory
+
+    // checking whether game exists or not
+    const game = activeGames.get(gameId);
+    if (!game) {
+        ws.send(JSON.stringify({ action: 'resign-error', error: 'game-not-found' }));
+        return;
+    };
+
+    // whether player is real or not
+    const isPlayer = game.whitePlayerId === resignedBy || game.blackPlayerId === resignedBy;
+    if (!isPlayer) {
+        ws.send(JSON.stringify({ action: 'resign-error', error: 'not-a-player' }))
+    }
+
+    // game status must be in-progress
+    if (game.status !== 'in_progress') {
+        ws.send(JSON.stringify({ action: 'resign-error', error: 'game not in-progress anymore' }));
+        return;
+    };
+
+    const gameWinner = game.whitePlayerId === resignedBy ? game.blackPlayerId : game.whitePlayerId;
+    const winnerColor = game.whitePlayerId === resignedBy ? 'black' : 'white'; // opposite color wins
+
+    // persisting to db
+    try {
+        await endGame(gameId, true, false, false, false, 'resignation', gameWinner, winnerColor);
+    } catch (err) {
+        console.error(`[handleRequestResign] DB update failed for game ${gameId}:`, err);
+        ws.send(JSON.stringify({ action: 'resign-error', error: 'server-error' }));
+        return;
+    }
+
+    // updating the in-memory status of the game so that further moves are not entertained
+    activeGames.set(gameId, {
+        ...game,
+        status: 'resigned'
+    });
+
+    // broadcasting the message to both the users
+    broadcastToGame(gameId, {
+        action: 'game-over',
+        data: {
+            reason: 'resigned',
+            winner: gameWinner,
+            color: winnerColor,
+            resignedBy,
+        }
+    });
+
+    // cleaning up memory before exiting the function
+    setTimeout(() => activeGames.delete(gameId), 5000);
 };

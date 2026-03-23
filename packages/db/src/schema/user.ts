@@ -47,5 +47,9 @@ export const usersRelations = relations(users, ({ one, many }) => ({
     userProfile: one(profiles, {
         fields: [users.id],
         references: [profiles.userId]
+    }),
+    winner: one(games, {
+        fields: [users.id],
+        references: [games.winner]
     })
 }));

@@ -10,6 +10,7 @@ export interface GameState {
 
     chess: Chess,
     activeColor: 'white' | 'black',
+    status: "waiting" | "in_progress" | "completed" | "abandoned" | "aborted" | "resigned" | "draw" | "timeout",
 
     lastMove: string;
     lastMoveTime: number;

@@ -26,7 +26,7 @@ export const useGame = () => {
     const chessGameRef = useRef(new Chess());
     const timerRef = useRef<ReturnType<typeof setInterval>>(null);
     const activeColorRef = useRef<'w' | 'b'>('w');
-    const statusRef = useRef<"waiting" | "in_progress" | "completed" | "abandoned" | "aborted">("in_progress");
+    const statusRef = useRef<"waiting" | "in_progress" | "completed" | "abandoned" | "aborted" | "resigned" | "draw" | "timeout">("in_progress");
     const moveStartRef = useRef<number>(0);
 
     // states important for running the game
@@ -40,13 +40,32 @@ export const useGame = () => {
 
     const [gameType, setGameType] = useState<"bullet" | "blitz" | "rapid" | "classical" | "daily" | null>(null)
     const [moveHistory, setMoveHistory] = useState<Move[]>([]);
-    const [status, setStatus] = useState<"waiting" | "in_progress" | "completed" | "abandoned" | "aborted">("in_progress");
+    const [status, setStatus] = useState<"waiting" | "in_progress" | "completed" | "abandoned" | "aborted" | "resigned" | "draw" | "timeout">("in_progress");
     const [activeColor, setActiveColor] = useState<'w' | 'b'>('w');
     const [capturedPieces, setCapturedPieces] = useState({ w: [], b: [] });
     const [lastMove, setLastMove] = useState<{ from: string, to: string }[]>([]);
     const [whiteTime, setWhiteTime] = useState<number>(0);
     const [blackTime, setBlackTime] = useState<number>(0);
     const [playerColor] = useState<'w' | 'b'>('w');
+    
+    const [isResigning, setIsResigning] = useState<boolean>(false);
+    const [resignModal, setResignModal] = useState<boolean>(false);
+
+    // game over states
+    const [gameOverModal, setGameOverModal] = useState<boolean>(false);
+    const [gameOverInfo, setGameOverInfo] = useState<{
+        isGameOver: boolean,
+        reason: string,
+        winner: string | null,
+        color: 'white' | 'black' | null,
+        resignedBy: string | null
+    }>({
+        isGameOver: false,
+        reason: '',
+        winner: null,
+        color: null,
+        resignedBy: null
+    });
 
     const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
     const [chatInput, setChatInput] = useState<string>('');
@@ -55,7 +74,6 @@ export const useGame = () => {
         const message = JSON.parse(event.data);
         console.log('message received: ', message);
 
-        // if the move is successful
         if (message.action === 'move-successful') {
             console.log('message received for successful move: ', message);
             const moveDta = message.data;
@@ -81,6 +99,22 @@ export const useGame = () => {
             setBlackTime(Math.floor(moveDta.clocks.black / 1000));
         } else if (message.action === 'chat-message') {
             setChatMessages((prev) => [ ...prev, message.data ]);
+        } else if (message.action === 'game-over') {
+            console.log('message data: ', message.data);
+            const { reason, winner, color, resignedBy } = message.data;
+
+            clearInterval(timerRef.current!);
+
+            // if the resign modal was open, then close it first before showing the confirmation modal
+            if (resignModal) setResignModal(false);
+
+            if (reason === 'checkmate') setStatus('completed');
+            if (reason === 'resigned') { setStatus('completed'); setIsResigning(false) };
+            if (reason === 'stalemate' || reason === 'threefold-repetition' || reason === 'insufficient material' || reason === 'fifty-move rule') setStatus('draw');
+
+            // game over state --> filled after the game ends
+            setGameOverModal(true);
+            setGameOverInfo({ isGameOver: true, reason, winner, color, resignedBy });
         }
     }, []);
 
@@ -117,7 +151,7 @@ export const useGame = () => {
             // optimistic UI updates
             setChessPosition(chessGameRef.current.fen());
             setLastMove((prev) => [ ...prev, { from: sourceSquare, to: targetSquare as string } ]);
-            setMoveHistory(chessGameRef.current.history({ verbose: true }));
+            // setMoveHistory(chessGameRef.current.history({ verbose: true }));
             setActiveColor(chessGameRef.current.turn());
 
             // tracking captured pieces
@@ -312,5 +346,34 @@ export const useGame = () => {
         setChatInput(''); // clear input immediately
     }, [chatInput, gameId, sendMessage, user?.id]);
 
-    return { chessGameRef, chessPosition, setChessPosition, playerColor, blackTime, whiteTime, capturedPieces, activeColor, moveHistory, status, opponentMetadata, playerMetadata, onDrop, gameType, lastMove, canDragPiece, chatMessages, chatInput, setChatInput, sendChatMessage }
+    return {
+        gameId,
+        chessGameRef,
+        chessPosition,
+        setChessPosition,
+        playerColor,
+        blackTime,
+        whiteTime,
+        capturedPieces,
+        activeColor,
+        moveHistory,
+        status,
+        opponentMetadata,
+        playerMetadata,
+        onDrop,
+        gameType,
+        lastMove,
+        canDragPiece,
+        chatMessages,
+        chatInput,
+        setChatInput,
+        sendChatMessage,
+        gameOverModal,
+        setGameOverModal,
+        gameOverInfo,
+        isResigning,
+        setIsResigning,
+        resignModal,
+        setResignModal
+    }
 }

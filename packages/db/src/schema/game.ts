@@ -2,7 +2,7 @@ import { boolean, integer, pgTable, text, timestamp, uuid } from "drizzle-orm/pg
 import { users } from "./user";
 import { tournaments } from "./tournament";
 import { relations } from "drizzle-orm";
-import { timeControlEnum, gameStatusEnum, terminationEnum } from "./enums";
+import { timeControlEnum, gameStatusEnum, terminationEnum, gameResultEnum } from "./enums";
 import { chatMessages } from "./chat";
 
 export const games = pgTable("games", {
@@ -20,7 +20,8 @@ export const games = pgTable("games", {
     timeLimitSecs: integer("time_limit_secs").notNull(),
     incrementSecs: integer("increment_secs").default(0),
     status: gameStatusEnum().notNull(),
-    winner: text("winner"),
+    result: gameResultEnum(),
+    winner: uuid("winner_id").references(() => users.id, { onDelete: 'cascade' }),
     termination: terminationEnum(),
     initialFen: text("initial_fen"),
     currentFen: text("current_fen"),
@@ -28,6 +29,7 @@ export const games = pgTable("games", {
     whiteTimeLeft: integer("white_time_left"),
     blackTimeLeft: integer("black_time_left"),
     isRated: boolean("is_rated").default(true),
+    resignedBy: uuid('resigned_by'),
 
     // if the game was from a tournament
     tournamentId: uuid("tournament_id").references(() => tournaments.id),
@@ -52,6 +54,10 @@ export const gamesRelationWithUser = relations(games, ({ one, many }) => ({
     tournament: one(tournaments, {
         fields: [games.tournamentId],
         references: [tournaments.id]
+    }),
+    winner: one(users, {
+        fields: [games.winner],
+        references: [users.id]
     }),
     chats: many(chatMessages)
 }))
