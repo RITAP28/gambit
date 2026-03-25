@@ -152,7 +152,7 @@ const Game = () => {
       </main>
 
       {resignModal && gameId && playerMetadata && <ResignModal gameId={gameId} setModalOpen={setResignModal} playerId={playerMetadata.id} />}
-      {gameOverInfo.isGameOver && playerMetadata && <GameOverModal playerColor={playerMetadata.color} playerId={playerMetadata.id} gameOverInfo={gameOverInfo} />}
+      {gameOverInfo.isGameOver && gameId && playerMetadata && <GameOverModal gameId={gameId} playerColor={playerMetadata.color} playerId={playerMetadata.id} gameOverInfo={gameOverInfo} />}
     </div>
   )
 }

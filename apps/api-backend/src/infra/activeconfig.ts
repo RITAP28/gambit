@@ -13,6 +13,9 @@ const backendConfig = {
     ACCESS_GENERATE_TOKEN: process.env.ACCESS_GENERATE_TOKEN,
     REFRESH_GENERATE_TOKEN: process.env.REFRESH_GENERATE_TOKEN,
     REFRESH_TOKEN_EXPIRY: process.env.REFRESH_TOKEN_EXPIRY,
+
+    // gemini api key
+    GEMINI_API_KEY: process.env.GEMINI_API_KEY
 }
 
 export default backendConfig;

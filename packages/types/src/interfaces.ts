@@ -39,3 +39,16 @@ export interface ChatMessage {
         message: string;
     };
 }
+
+export interface IGameMoves {
+  id: string;
+  gameId: string;
+  moveNumber: number;
+  color: "white" | "black";
+  san: string;
+  uci: string;
+  fenAfter: string;
+  timeTaken: number;
+  clockAfter: number;
+  createdAt: Date;
+}

@@ -11,6 +11,7 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "@google/genai": "^1.46.0",
     "@neondatabase/serverless": "^1.0.2",
     "@repo/db": "workspace:^",
     "@repo/utils": "workspace:^",

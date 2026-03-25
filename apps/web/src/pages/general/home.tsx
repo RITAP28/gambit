@@ -150,7 +150,7 @@ const Home = () => {
           </aside>
 
           {/* Main Content */}
-          <main className="w-[65%] p-6">
+          <main className="w-[65%] p-6 tracking-tighter">
             <h1 className="text-3xl font-space font-bold mb-4 text-neutral-400">Welcome Back, <span className="text-amber-600">{user.name}</span></h1>
             {/* <p className="text-gray-400">Start a new game or continue where you left off.</p> */}
             <div className="w-full flex flex-row gap-2 pt-4">
