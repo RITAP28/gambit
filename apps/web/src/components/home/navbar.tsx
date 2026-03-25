@@ -1,7 +1,7 @@
 import { useAppSelector } from "@/redux/hook";
 import { useState } from "react";
 
-export default function Navbar({ handleLogout }: { loading: boolean; error: string | null; handleLogout: () => Promise<void> }) {
+export default function Navbar({ loading, handleLogout }: { loading: boolean; error: string | null; handleLogout: () => Promise<void> }) {
   const { user } = useAppSelector((state) => state.auth);
   const [isOpen, setIsOpen] = useState(false);
 
@@ -34,10 +34,11 @@ export default function Navbar({ handleLogout }: { loading: boolean; error: stri
             <>
             <button
               type="button"
-              className="px-4 py-1 bg-white text-black rounded hover:bg-gray-200 transition text-sm"
+              className="px-4 py-1 border-[0.3px] border-neutral-700 rounded hover:bg-neutral-700 text-white transition text-sm hover:cursor-pointer font-medium"
               onClick={handleLogout}
+              disabled={loading}
             >
-              Logout
+              {loading ? 'logging you out...' : 'Logout'}
             </button>
             </>
           )}
