@@ -1,8 +1,9 @@
-export enum authProvider {
-  CREDENTIALS = "credentials",
-  GOOGLE = "google",
-  APPLE = "apple"
-};
+export const authProvider = {
+  CREDENTIALS: "credentials",
+  GOOGLE: "google",
+  APPLE: "apple"
+} as const;
+export type authProvider = (typeof authProvider)[keyof typeof authProvider]
 
 export interface IPlayerCardProps {
   id: string;
