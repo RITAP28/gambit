@@ -2,10 +2,10 @@ import { sendResponse } from "@repo/utils/src";
 import { Request, Response } from "express";
 import { accessTokenExpiry, getExistingUser, hashPassword, refreshTokenExpiry, registerErrors, registerUserInputSchema } from "./constants";
 import { db, users } from "@repo/db";
-import { authProvider } from "../../../../../../packages/types/src";
 import backendConfig from "../../../infra/activeconfig";
 import { accessTokenGenerator, refreshTokenGenerator } from "../../../utils/token.generator";
 import { saveSession } from "../../../utils/save.session";
+import { authProvider } from "@repo/types/src/index";
 
 export const run = async (req: Request, res: Response) => {
     const validation = registerUserInputSchema.safeParse(req.body.data);

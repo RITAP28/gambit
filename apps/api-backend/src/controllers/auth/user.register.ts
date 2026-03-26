@@ -3,7 +3,7 @@ import validator from 'validator';
 import { eq } from "drizzle-orm";
 import bcrypt from 'bcrypt';
 import { sendResponse } from "@repo/utils/src/index";
-import { authProvider } from '../../../../../packages/types/src/index'
+import { authProvider } from '@repo/types/src/index'
 import { db, users } from "@repo/db";
 import backendConfig from "../../infra/activeconfig";
 import { accessTokenGenerator, refreshTokenGenerator } from "../../utils/token.generator";
