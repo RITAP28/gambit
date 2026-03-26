@@ -3,11 +3,11 @@ import validator from 'validator';
 import { eq } from "drizzle-orm";
 import bcrypt from 'bcrypt';
 import { sendResponse } from "@repo/utils/src/index";
-import { accessTokenGenerator, refreshTokenGenerator } from "@repo/utils/src/index";
-import { saveSession } from '@repo/utils/src/save.session'
 import { authProvider } from '../../../../../packages/types/src/index'
 import { db, users } from "@repo/db";
-import backendConfig from "@repo/utils/src/infrastructure/activeconfig.backend";
+import backendConfig from "../../infra/activeconfig";
+import { accessTokenGenerator, refreshTokenGenerator } from "../../utils/token.generator";
+import { saveSession } from "../../utils/save.session";
 
 const ACCESS_TOKEN_EXPIRY = backendConfig.ACCESS_TOKEN_EXPIRY_TIME;
 const REFRESH_TOKEN_EXPIRY = backendConfig.REFRESH_TOKEN_EXPIRY_TIME;
@@ -15,14 +15,12 @@ const REFRESH_TOKEN_EXPIRY = backendConfig.REFRESH_TOKEN_EXPIRY_TIME;
 export const register = async (req: Request, res: Response) => {
     try {
         const { name, email, password } = req.body;
-        console.log('request body: ', req.body);
 
         // input validation
         if (!name || !email || !password) return sendResponse(res, 400, false, "All fields are required");
         if (!validator.isEmail(email)) return sendResponse(res, 400, false, "Invalid email format");
         
         const existingUser = (await db.select().from(users).where(eq(users.email, email)))[0];
-        console.log('existing user: ', existingUser);
         if (existingUser) return sendResponse(res, 409, false, "User already exists");
 
         const hashedPassword = await bcrypt.hash(password, 12);

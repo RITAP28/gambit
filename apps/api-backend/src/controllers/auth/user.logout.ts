@@ -2,7 +2,7 @@ import { Request, Response } from 'express';
 import { eq } from 'drizzle-orm';
 import { sendResponse, fetchUser } from '@repo/utils/src/index';
 import { db, sessions } from '@repo/db';
-import backendConfig from '@repo/utils/src/infrastructure/activeconfig.backend';
+import backendConfig from '../../infra/activeconfig';
 
 export const logout = async (req: Request, res: Response): Promise<void> => {
     try {

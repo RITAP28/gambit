@@ -4,8 +4,10 @@ import * as bcrypt from "bcrypt";
 import validator from "validator";
 import { db, users } from "@repo/db";
 import rateLimit from 'express-rate-limit';
-import { sendResponse, accessTokenGenerator, refreshTokenGenerator, saveSession } from "@repo/utils/src/index";
-import backendConfig from "@repo/utils/src/infrastructure/activeconfig.backend";
+import { sendResponse } from "@repo/utils/src/index";
+import { accessTokenGenerator, refreshTokenGenerator } from "../../utils/token.generator";
+import { saveSession } from "../../utils/save.session";
+import backendConfig from "../../infra/activeconfig";
 
 // Configure rate limiting for login attempts
 export const loginLimiter = rateLimit({
@@ -32,45 +34,21 @@ export const login = async (req: Request, res: Response): Promise<void> => {
         .limit(1)
     )[0];
 
-    console.log("existing user: ", existingUser);
-
-    if (!existingUser) {
-      return sendResponse(res, 401, false, "Invalid credentials");
-    }
-
-    // Check if user is blocked or locked
-    if (existingUser.isAuthenticated === false) {
-      return sendResponse(res, 403, false, "Account is not authenticated");
-    }
+    // validation & checking if user is blocked or locked
+    if (!existingUser) return sendResponse(res, 401, false, "Invalid credentials");
+    if (existingUser.isAuthenticated === false) return sendResponse(res, 403, false, "Account is not authenticated");
 
     // Verify password
-    const isPasswordValid = await bcrypt.compare(
-      password,
-      existingUser.passwordHash as string
-    );
-    if (!isPasswordValid) {
-      return sendResponse(res, 401, false, "Invalid credentials");
-    }
+    const isPasswordValid = await bcrypt.compare(password, existingUser.passwordHash as string);
+    if (!isPasswordValid) return sendResponse(res, 401, false, "Invalid credentials");
 
     // Generate new tokens
     const accessToken = accessTokenGenerator(existingUser.id);
     const refreshToken = refreshTokenGenerator(existingUser.id);
 
-    console.log("access token: ", accessToken);
-    console.log("refresh token: ", refreshToken);
-
     // Save session
-    const savedSession = await saveSession(
-      existingUser.id,
-      accessToken,
-      refreshToken
-    );
-
-    if (!savedSession) {
-      return sendResponse(res, 500, false, "Failed to create session");
-    }
-
-    console.log("expiry saved in db: ", savedSession.expiresAt);
+    const savedSession = await saveSession(existingUser.id, accessToken, refreshToken);
+    if (!savedSession) return sendResponse(res, 500, false, "Failed to create session");
 
     // Set secure cookies
     res.cookie("accessToken", accessToken, {
@@ -100,7 +78,6 @@ export const login = async (req: Request, res: Response): Promise<void> => {
       accessToken: savedSession.accessToken,
     });
   } catch (error) {
-    console.error("Login error:", error);
     return sendResponse(res, 500, false, "Internal server error");
   }
 };
