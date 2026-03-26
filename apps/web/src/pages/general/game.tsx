@@ -4,9 +4,8 @@ import GameOverModal from '@/components/modals/gameOverModal';
 import ResignModal from '@/components/modals/resignModal';
 import { useGame } from '@/hooks/useGame';
 import { useAppSelector } from '@/redux/hook';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef } from 'react';
 import { Chessboard } from 'react-chessboard'
-import { useParams } from 'react-router-dom';
 
 const Game = () => {
   const { user } = useAppSelector((state) => state.auth);
@@ -30,9 +29,7 @@ const Game = () => {
     chatInput,
     setChatInput,
     sendChatMessage,
-    gameOverModal,
     gameOverInfo,
-    setGameOverModal,
     resignModal,
     setResignModal
   } = useGame();

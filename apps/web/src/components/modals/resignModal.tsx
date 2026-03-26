@@ -49,7 +49,7 @@ const ResignModal = ({ gameId, setModalOpen, playerId }: IResignModalProps) => {
                 </button>
                 <button
                     type="button"
-                    className="tracking-tight text-sm px-3 py-1.5 bg-red-700 hover:bg-red-600 hover:cursor-pointer rounded-sm transition duration-300 ease-in-out disabled:opacity-50 disabled:cursor-not-allowed min-w-[80px] flex items-center justify-center"
+                    className="tracking-tight text-sm px-3 py-1.5 bg-red-700 hover:bg-red-600 hover:cursor-pointer rounded-sm transition duration-300 ease-in-out disabled:opacity-50 disabled:cursor-not-allowed min-w-20 flex items-center justify-center"
                     onClick={handleResign}
                     disabled={isResigning}
                 >

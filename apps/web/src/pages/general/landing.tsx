@@ -53,7 +53,7 @@ export default function Landing() {
       <section className="px-6 py-24 max-w-6xl mx-auto">
         <h2 className="text-3xl font-bold mb-12 text-center">
           Built for Players. Engineered for Developers. <br />
-          <span className="w-full flex justify-center items-center">more coming soon...</span>
+          <span className="w-full flex justify-center items-center">more features coming soon...</span>
         </h2>
         
 
@@ -61,7 +61,7 @@ export default function Landing() {
           {/* User Perspective */}
           <div className="bg-neutral-800 p-8 rounded-2xl shadow-lg">
             <h3 className="text-xl font-semibold text-amber-600 mb-4">
-              ♟️ Player Experience
+              Player Experience
             </h3>
             <ul className="space-y-3 text-neutral-300">
               <li>Real-time multiplayer chess with WebSocket sync</li>
@@ -75,7 +75,7 @@ export default function Landing() {
           {/* Developer Perspective */}
           <div className="bg-neutral-800 p-8 rounded-2xl shadow-lg">
             <h3 className="text-xl font-semibold text-amber-600 mb-4">
-              ⚙️ Engineering Highlights
+              Engineering Highlights
             </h3>
             <ul className="space-y-3 text-neutral-300">
               <li>Server-authoritative chess engine using chess.js</li>
@@ -113,7 +113,7 @@ export default function Landing() {
         <p className="tracking-tighter">ritap2804manutd@gmail.com</p>
 
         <p className="mt-4 text-sm">
-          Built with ♟️ by Ritap Dey
+          Built by Ritap Dey
         </p>
       </footer>
     </div>

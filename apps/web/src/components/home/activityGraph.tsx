@@ -19,32 +19,36 @@ export default function ActivityGraph({ loading, error, data }: ActivityGraphPro
     <div className="relative p-4 bg-neutral-600 rounded-xl">
 
       {/* Grid */}
-      <div className="grid grid-flow-col grid-rows-7 gap-1">
-        {data.map((day, index) => {
-          const intensity = Math.min(day.played, 5);
+      <div className="w-full">
+        {data.length > 0 ? (
+          <div className="grid grid-flow-col grid-rows-7 gap-1">
+            {data.map((day, index) => {
+              const intensity = Math.min(day.played, 5);
 
-          const bgColor =
-            intensity === 0
-              ? "bg-neutral-800"
-              : intensity < 3
-              ? "bg-yellow-500"
-              : "bg-green-500";
+              const bgColor = intensity === 0 ? "bg-neutral-800" : intensity < 3 ? "bg-yellow-500" : "bg-green-500";
 
-          return (
-            <div
-              key={index}
-              className={`w-4 h-4 rounded-sm cursor-pointer ${bgColor}`}
-              onMouseEnter={(e) => {
-                setHovered(day);
-                setPosition({
-                  x: e.clientX,
-                  y: e.clientY,
-                });
-              }}
-              onMouseLeave={() => setHovered(null)}
-            />
-          );
-        })}
+              return (
+                <div
+                  key={index}
+                  className={`w-4 h-4 rounded-sm cursor-pointer ${bgColor}`}
+                  onMouseEnter={(e) => {
+                    setHovered(day);
+                    setPosition({
+                      x: e.clientX,
+                      y: e.clientY,
+                    });
+                  }}
+                  onMouseLeave={() => setHovered(null)}
+                />
+              );
+            })}
+          </div>
+        ) : (
+          <p className="w-full text-white font-medium flex flex-col justify-center items-center py-2">
+            <span className="">No activity yet.</span>
+            <span className="">Play a match to see your activity!</span>
+          </p>
+        )}
       </div>
 
       {/* Tooltip */}

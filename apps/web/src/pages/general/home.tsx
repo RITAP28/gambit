@@ -135,14 +135,23 @@ const Home = () => {
           {/* Sidebar */}
           <aside className="w-[15%] bg-neutral-900 p-6 flex flex-col justify-between border-r border-neutral-800">
             <div className="flex flex-col gap-2">
-              <button type="button" className="text-left text-neutral-300 hover:cursor-pointer bg-amber-700 hover:bg-amber-600 px-3 py-2 rounded-lg transition flex flex-row gap-2 items-center">
+              <button
+                type="button"
+                className="text-left text-neutral-300 hover:cursor-pointer bg-amber-700 hover:bg-amber-600 px-3 py-2 rounded-lg transition flex flex-row gap-2 items-center"
+                onClick={handleSearchPlayers}
+              >
                 <span className=""><Plus className="w-4" /></span>
                 <span className="">New Match</span>
               </button>
-              <button type="button" className="text-left text-neutral-500 hover:cursor-pointer hover:bg-neutral-800 px-3 py-2 rounded transition">Dashboard</button>
-              <button type="button" className="text-left text-neutral-500 hover:cursor-pointer hover:bg-neutral-800 px-3 py-2 rounded transition">Live Games</button>
-              <button type="button" className="text-left text-neutral-500 hover:cursor-pointer hover:bg-neutral-800 px-3 py-2 rounded transition">Tournament Hub</button>
-              <button type="button" className="text-left text-neutral-500 hover:cursor-pointer hover:bg-neutral-800 px-3 py-2 rounded transition">Social Hub</button>
+              <button
+                type="button"
+                className="text-left text-neutral-500 hover:cursor-pointer hover:bg-neutral-800 px-3 py-2 rounded transition"
+              >
+                Live Games {`[soon]`}
+              </button>
+              {/* <button type="button" className="text-left text-neutral-500 hover:cursor-pointer hover:bg-neutral-800 px-3 py-2 rounded transition">Dashboard</button> */}
+              {/* <button type="button" className="text-left text-neutral-500 hover:cursor-pointer hover:bg-neutral-800 px-3 py-2 rounded transition">Tournament Hub</button> */}
+              {/* <button type="button" className="text-left text-neutral-500 hover:cursor-pointer hover:bg-neutral-800 px-3 py-2 rounded transition">Social Hub</button> */}
             </div>
 
             {/* Bottom Section (Email) */}

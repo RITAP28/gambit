@@ -64,9 +64,6 @@ const applyInline = (text: string): string => {
 const GameOverModal = ({ gameOverInfo, gameId, playerColor, playerId }: IGameOverModalProps) => {
     const { user } = useAppSelector((state) => state.auth);
 
-    const [loading, setLoading] = useState<boolean>(false);
-    const [error, setError] = useState<string | null>(null);
-
     const [movesLoading, setMovesLoading] = useState<boolean>(false);
     const [movesError, setMovesError] = useState<string | null>(null);
     const [moves, setMoves] = useState<IGameMoves[]>([]);
