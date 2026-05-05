@@ -2,14 +2,22 @@ import { verifyAccessToken } from "@repo/auth/src/jwt/verify";
 import { WebSocket } from "ws";
 import { activeGames, GameState, onlineUsers, usersSearchingForMatch } from "./server";
 import { broadcastOnlineUsers, sendMessage } from "./connection";
-import { db } from "../../../packages/db/src";
-import { games } from "../../../packages/db/src/schema/game";
-import { moves } from '@repo/db/src/schema/moves';
+import { db, games, moves } from "@repo/db";
 import { Chess } from "chess.js";
 import { broadcastToGame } from "./utils/broadcastToGame";
-import { endGame, fetchExistingGame, fetchUserSession, insertChatMessage, updateGameState } from '@repo/utils/src/db.queries'
-import { ChatMessage } from "@repo/types";
 import { MAX_MESSAGE_LENGTH } from "@repo/utils/src/constants";
+import { fetchUserSession } from "./services/user.service";
+import { endGame, insertChatMessage } from "./services/chat.service";
+import { fetchExistingGame, updateGameState } from "./services/game.service";
+
+interface ChatMessage {
+    action: string;
+    data: {
+        gameId: string;
+        senderId: string;
+        message: string;
+    };
+}
 
 export async function handleUserConnection(ws: WebSocket, message: any, currentUserId: string | null) {
     const { userId, accessToken } = message;

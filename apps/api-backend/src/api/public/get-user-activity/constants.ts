@@ -1,6 +1,4 @@
-import { db } from "@repo/db"
-import { games } from "@repo/db/src/schema/game"
-import { eq, or } from "drizzle-orm"
+import { db, games, eq, or } from "@repo/db"
 
 export interface IUserActivity {
     date: string

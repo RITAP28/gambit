@@ -1,4 +1,5 @@
 import type { ActivityDay } from "@/pages/general/home";
+import { Spinner } from "@/components/ui/spinner";
 import { useAppSelector } from "@/redux/hook"
 import { User } from "lucide-react"
 
@@ -40,9 +41,11 @@ const Profile = ({ loading, error, data }: ProfileProps) => {
 
             {/* statistics about the player */}
             {loading ? (
-                <div className="">loading...</div>
+                <div className="flex justify-center items-center py-6">
+                    <Spinner className="w-8 h-8" />
+                </div>
             ) : error ? (
-                <div className="">{error}</div>
+                <div className="text-red-400 text-sm px-2">{error}</div>
             ) : (
                 <div className="w-full flex flex-col gap-1 text-sm px-2">
                     <p className="text-lg">Player Statistics:</p>

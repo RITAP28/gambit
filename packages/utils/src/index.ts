@@ -1,6 +1,5 @@
 export * from './error'
 export * from './response'
 export * from './send.response'
-export * from './db.queries'
 export * from './constants'
 export * from './client/index'

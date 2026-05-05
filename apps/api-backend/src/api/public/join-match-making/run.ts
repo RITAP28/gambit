@@ -1,6 +1,7 @@
-import { fetchUser, sendResponse } from "@repo/utils/src";
+import { sendResponse } from "@repo/utils/src";
 import { Request, Response } from "express";
 import { joinMatchMakingErrors } from "./constants";
+import { fetchUser } from "../../../services/user.service";
 
 export const run = async (req: Request, res: Response) => {
     const userId = req.body.data.userId as string;

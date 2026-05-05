@@ -22,3 +22,4 @@ export async function testDatabaseConnection() {
 }
 
 export * from "./schema"
+export { eq, asc, or } from 'drizzle-orm'

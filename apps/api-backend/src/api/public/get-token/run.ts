@@ -1,7 +1,8 @@
-import { fetchUserSession, sendResponse } from "@repo/utils/src";
+import { sendResponse } from "@repo/utils/src";
 import { Request, Response } from "express"
 import backendConfig from "../../../infra/activeconfig";
 import * as jwt from 'jsonwebtoken';
+import { fetchUserSession } from "../../../services/user.service";
 
 interface AuthRequest extends Request {
     user?: {
@@ -53,7 +54,7 @@ export const run = async (req: AuthRequest, res: Response) => {
             return sendResponse(res, 200, true, 'tokens approved', {
                 accessToken: token
             });
-        } catch (error) {
+        } catch (error: any) {
             if (error.name === "TokenExpiredError") {
                 try {
                     console.log('decrypting refresh token');

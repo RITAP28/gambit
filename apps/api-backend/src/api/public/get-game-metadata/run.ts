@@ -1,8 +1,8 @@
-import { db } from "@repo/db";
-import { games } from "@repo/db/src/schema/game";
-import { getChatHistory, sendResponse } from "@repo/utils/src";
+import { db, games } from "@repo/db";
+import { sendResponse } from "@repo/utils/src";
 import { eq } from "drizzle-orm";
 import { NextFunction, Request, Response } from "express";
+import { getChatHistory } from "../../../services/chat.service";
 
 export const run = async (req: Request, res: Response, next: NextFunction) => {
     const { gameId } = req.body.data;

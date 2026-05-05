@@ -1,6 +1,4 @@
-import { db } from "@repo/db";
-import { moves } from "@repo/db/src/schema/moves";
-import { eq } from "drizzle-orm";
+import { db, moves, eq } from "@repo/db";
 
 export const fetchGameMoves = async (gameId: string) => {
     try {

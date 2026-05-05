@@ -1,8 +1,8 @@
-import { db } from "@repo/db";
-import { games } from "@repo/db/src/schema/game";
-import { fetchUser, sendResponse } from "@repo/utils/src";
+import { db, games } from "@repo/db";
+import { sendResponse } from "@repo/utils/src";
 import { eq } from "drizzle-orm";
 import { NextFunction, Request, Response } from "express";
+import { fetchUser } from "../../../services/user.service";
 
 export const run = async (req: Request, res: Response, next: NextFunction) => {
     const { userId, opponentId, gameId } = req.body.data;

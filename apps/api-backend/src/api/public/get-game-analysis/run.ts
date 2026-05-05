@@ -1,8 +1,10 @@
-import { fetchExistingGame, sendResponse } from "@repo/utils/src";
 import { NextFunction, Request, Response } from "express";
 import { fetchGameMoves } from "./constants";
 import backendConfig from "../../../infra/activeconfig";
 import { GoogleGenAI } from "@google/genai";
+import { sendResponse } from "@repo/utils/src";
+import { fetchExistingGame } from "../../../services/game.service";
+
 
 const geminiApiKey = backendConfig.GEMINI_API_KEY;
 const gemini = new GoogleGenAI({ apiKey: geminiApiKey! });
@@ -29,7 +31,7 @@ export const run = async (req: Request, res: Response, next: NextFunction) => {
         if (gameMetadata.status !== 'completed') return sendResponse(res, 400, false, 'game not completed, bad request');
 
 
-        const terminalStatuses = ['checkmate', 'timeout', 'stalemate', 'insufficient_material', 'threefold_repetition', 'fifty_move_rule', 'resignation']
+        const terminalStatuses = ['checkmate', 'timeout', 'stalemate', 'insufficient_material', 'threefold_repetition', 'fifty_move_rule', 'resignation', null]
         if (!terminalStatuses.includes(gameMetadata.termination)) return sendResponse(res, 400, false, 'analysis not possible for this game')
 
         const result = gameMetadata.result;

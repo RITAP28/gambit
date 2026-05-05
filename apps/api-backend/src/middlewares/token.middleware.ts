@@ -2,11 +2,10 @@ import { NextFunction, Request, Response } from "express";
 import dotenv from "dotenv";
 import jwt from "jsonwebtoken";
 import { eq } from "drizzle-orm";
-import { db } from "@repo/db";
-import { sessions } from "@repo/db/src/schema/session";
+import { db, sessions } from "@repo/db";
 import { sendResponse } from '@repo/utils/src/index';
-import { fetchUserSession } from '@repo/utils/src/db.queries';
 import backendConfig from "../infra/activeconfig";
+import { fetchUserSession } from "../services/user.service";
 
 dotenv.config();
 
