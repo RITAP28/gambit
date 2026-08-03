@@ -1,15 +1,22 @@
 {
   "name": "@repo/redis",
   "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
+  "description": "Optional Redis pub/sub for cross-instance fanout",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
   "scripts": {
-    "test": "echo \"No tests for @repo/redis\" && exit 0"
+    "check-types": "tsc --noEmit",
+    "test": "vitest run"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
+  "dependencies": {
+    "ioredis": "^6.0.0"
+  },
   "devDependencies": {
-    "@types/node": "^25.3.3"
+    "@types/node": "^25.3.3",
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.0"
   }
 }

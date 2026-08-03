@@ -2,13 +2,13 @@ import config from "@/infra/activeconfig";
 import { useAppSelector } from "@/redux/hook";
 import type { IPlayerMetadataProps } from "@repo/types";
 import axios from "axios";
-import { Chess, Move } from "chess.js"
-import { useCallback, useEffect, useRef, useState } from "react"
+import { Chess, type Move } from "chess.js";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { PieceDropHandlerArgs, PieceHandlerArgs } from "react-chessboard";
 import { useParams } from "react-router-dom";
 import { useWebSocket } from "./useWebSocket";
 
-interface ChatMessage {
+export interface ChatMessage {
     id: string;
     gameId: string;
     senderId: string;
@@ -16,335 +16,451 @@ interface ChatMessage {
     createdAt: string;
 }
 
+export interface RatingDelta {
+    userId: string;
+    before: number;
+    after: number;
+    change: number;
+    provisional: boolean;
+}
+
+export interface GameOverInfo {
+    isGameOver: boolean;
+    reason: string;
+    termination: string | null;
+    result: "white_win" | "black_win" | "draw" | null;
+    winner: string | null;
+    color: "white" | "black" | null;
+    resignedBy: string | null;
+    pgn: string | null;
+    ratings: { white: RatingDelta; black: RatingDelta } | null;
+}
+
+export type GameStatus =
+    | "waiting"
+    | "in_progress"
+    | "completed"
+    | "abandoned"
+    | "aborted"
+    | "resigned"
+    | "draw"
+    | "timeout";
+
+const STARTING_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
+
+/**
+ * Union of every field the server sends in a `data` payload. Which ones are
+ * present depends on the action, so all are optional and each case reads only
+ * what it expects.
+ */
+interface SocketData {
+    fen?: string;
+    pgn?: string;
+    uci?: string;
+    yourColor?: "white" | "black" | null;
+    role?: "player" | "spectator";
+    whitePlayerId?: string;
+    blackPlayerId?: string;
+    timeControl?: string;
+    isRated?: boolean;
+    drawOfferedBy?: string | null;
+    chatHistory?: ChatMessage[];
+    clocks?: { white: number; black: number };
+    by?: string | null;
+    result?: GameOverInfo["result"];
+    reason?: string;
+    termination?: string | null;
+    winner?: string | null;
+    color?: "white" | "black" | null;
+    resignedBy?: string | null;
+    ratings?: GameOverInfo["ratings"];
+    error?: string;
+    id?: string;
+    gameId?: string;
+    senderId?: string;
+    message?: string;
+    createdAt?: string;
+}
+
+const EMPTY_GAME_OVER: GameOverInfo = {
+    isGameOver: false,
+    reason: "",
+    termination: null,
+    result: null,
+    winner: null,
+    color: null,
+    resignedBy: null,
+    pgn: null,
+    ratings: null
+};
+
 export const useGame = () => {
-    const { ws, sendMessage } = useWebSocket();
+    const { ws, sendMessage, isConnected } = useWebSocket();
     const user = useAppSelector((state) => state.auth.user);
-    const accessToken = user && user.accessToken;
+    const accessToken = user?.accessToken;
     const { gameId } = useParams<{ gameId: string }>();
 
-    // defining the game as a ref to have access to the latest game information/state within closures and across renders
+    // The board is a ref so message handlers always see the latest position
+    // without being re-created on every move.
     const chessGameRef = useRef(new Chess());
-    const timerRef = useRef<ReturnType<typeof setInterval>>(null);
-    const activeColorRef = useRef<'w' | 'b'>('w');
-    const statusRef = useRef<"waiting" | "in_progress" | "completed" | "abandoned" | "aborted" | "resigned" | "draw" | "timeout">("in_progress");
-    const moveStartRef = useRef<number>(0);
+    const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+    const activeColorRef = useRef<"w" | "b">("w");
+    const statusRef = useRef<GameStatus>("in_progress");
 
-    // states important for running the game
-    const [isFetched, setIsFetched] = useState<boolean>(false);
-    const [chessPosition, setChessPosition] = useState<string>('');
+    const [isFetched, setIsFetched] = useState(false);
+    // Seeded with the standard opening position rather than reading the ref,
+    // which must not be touched during render.
+    const [chessPosition, setChessPosition] = useState<string>(STARTING_FEN);
 
-    // opponent id & metadata states
-    const [opponentId, setOpponentId] = useState<string>('');
+    const [opponentId, setOpponentId] = useState<string>("");
     const [opponentMetadata, setOpponentMetadata] = useState<IPlayerMetadataProps | null>(null);
     const [playerMetadata, setPlayerMetadata] = useState<IPlayerMetadataProps | null>(null);
 
-    const [gameType, setGameType] = useState<"bullet" | "blitz" | "rapid" | "classical" | "daily" | null>(null)
+    const [gameType, setGameType] = useState<string | null>(null);
+    const [isRated, setIsRated] = useState(false);
     const [moveHistory, setMoveHistory] = useState<Move[]>([]);
-    const [status, setStatus] = useState<"waiting" | "in_progress" | "completed" | "abandoned" | "aborted" | "resigned" | "draw" | "timeout">("in_progress");
-    const [activeColor, setActiveColor] = useState<'w' | 'b'>('w');
-    const [capturedPieces, setCapturedPieces] = useState({ w: [], b: [] });
-    const [lastMove, setLastMove] = useState<{ from: string, to: string }[]>([]);
-    const [whiteTime, setWhiteTime] = useState<number>(0);
-    const [blackTime, setBlackTime] = useState<number>(0);
-    const [playerColor] = useState<'w' | 'b'>('w');
-    
-    const [isResigning, setIsResigning] = useState<boolean>(false);
-    const [resignModal, setResignModal] = useState<boolean>(false);
-
-    // game over states
-    const [gameOverModal, setGameOverModal] = useState<boolean>(false);
-    const [gameOverInfo, setGameOverInfo] = useState<{
-        isGameOver: boolean,
-        reason: string,
-        winner: string | null,
-        color: 'white' | 'black' | null,
-        resignedBy: string | null
-    }>({
-        isGameOver: false,
-        reason: '',
-        winner: null,
-        color: null,
-        resignedBy: null
+    const [status, setStatus] = useState<GameStatus>("in_progress");
+    const [activeColor, setActiveColor] = useState<"w" | "b">("w");
+    const [capturedPieces, setCapturedPieces] = useState<{ w: string[]; b: string[] }>({
+        w: [],
+        b: []
     });
+    const [lastMove, setLastMove] = useState<{ from: string; to: string } | null>(null);
+    const [inCheck, setInCheck] = useState(false);
+    const [whiteTime, setWhiteTime] = useState(0);
+    const [blackTime, setBlackTime] = useState(0);
+
+    /**
+     * Which side this client is playing, as told by the server. This used to be
+     * hardcoded to white, which flipped the board and disabled dragging for
+     * whoever was playing black.
+     */
+    const [playerColor, setPlayerColor] = useState<"w" | "b" | null>(null);
+    const [role, setRole] = useState<"player" | "spectator">("player");
+
+    const [isResigning, setIsResigning] = useState(false);
+    const [resignModal, setResignModal] = useState(false);
+    const [drawOfferedBy, setDrawOfferedBy] = useState<string | null>(null);
+
+    const [gameOverModal, setGameOverModal] = useState(false);
+    const [gameOverInfo, setGameOverInfo] = useState<GameOverInfo>(EMPTY_GAME_OVER);
 
     const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
-    const [chatInput, setChatInput] = useState<string>('');
+    const [chatInput, setChatInput] = useState("");
+    const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-    const handleMessage = useCallback((event: MessageEvent) => {
-        const message = JSON.parse(event.data);
-        console.log('message received: ', message);
-
-        if (message.action === 'move-successful') {
-            console.log('message received for successful move: ', message);
-            const moveDta = message.data;
-
-            // syncing chess engine & UI updates
-            chessGameRef.current.load(moveDta.fen);
-            setChessPosition(moveDta.fen);
-
-            const source = moveDta.uci.slice(0, 2);
-            const target = moveDta.uci.slice(2, 4);
-            setLastMove((prev) => [ ...prev, { from: source, to: target } ]);
-
-            // updating move history & active player
-            setMoveHistory(chessGameRef.current.history({ verbose: true }));
-            setActiveColor(chessGameRef.current.turn());
-
-            // syncing clocks between the server and the client
-            // server sends the time in the format of milliseconds, so converting them to seconds
-            console.log('white time left: ', Math.floor(moveDta.clocks.white / 1000));
-            console.log('black time left: ', Math.floor(moveDta.clocks.black / 1000));
-
-            setWhiteTime(Math.floor(moveDta.clocks.white / 1000));
-            setBlackTime(Math.floor(moveDta.clocks.black / 1000));
-        } else if (message.action === 'chat-message') {
-            setChatMessages((prev) => [ ...prev, message.data ]);
-        } else if (message.action === 'game-over') {
-            console.log('message data: ', message.data);
-            const { reason, winner, color, resignedBy } = message.data;
-
-            clearInterval(timerRef.current!);
-
-            // if the resign modal was open, then close it first before showing the confirmation modal
-            if (resignModal) setResignModal(false);
-
-            if (reason === 'checkmate') setStatus('completed');
-            if (reason === 'resigned') { setStatus('completed'); setIsResigning(false) };
-            if (reason === 'stalemate' || reason === 'threefold-repetition' || reason === 'insufficient material' || reason === 'fifty-move rule') setStatus('draw');
-
-            // game over state --> filled after the game ends
-            setGameOverModal(true);
-            setGameOverInfo({ isGameOver: true, reason, winner, color, resignedBy });
-        }
+    const syncFromBoard = useCallback(() => {
+        const board = chessGameRef.current;
+        setChessPosition(board.fen());
+        setMoveHistory(board.history({ verbose: true }));
+        setActiveColor(board.turn());
+        setInCheck(board.inCheck());
     }, []);
+
+    const handleMessage = useCallback(
+        (event: MessageEvent) => {
+            let message: { action?: string; data?: SocketData };
+            try {
+                message = JSON.parse(event.data);
+            } catch {
+                return;
+            }
+
+            const data: SocketData = message.data ?? {};
+
+            switch (message.action) {
+                /**
+                 * Full state for a game already in progress, sent in reply to
+                 * `join-game`. This is what makes a refresh or a reconnect
+                 * restore the board instead of showing an empty position.
+                 */
+                case "game-state": {
+                    const board = chessGameRef.current;
+                    board.reset();
+                    try {
+                        if (data.pgn) board.loadPgn(data.pgn);
+                        else if (data.fen) board.load(data.fen);
+                    } catch {
+                        if (data.fen) board.load(data.fen);
+                    }
+
+                    setPlayerColor(
+                        data.yourColor === "black" ? "b" : data.yourColor === "white" ? "w" : null
+                    );
+                    setRole(data.role ?? "player");
+                    setOpponentId(
+                        (data.whitePlayerId === user?.id
+                            ? data.blackPlayerId
+                            : data.whitePlayerId) ?? ""
+                    );
+                    setGameType(data.timeControl ?? null);
+                    setIsRated(Boolean(data.isRated));
+                    setDrawOfferedBy(data.drawOfferedBy ?? null);
+                    setChatMessages(data.chatHistory ?? []);
+
+                    setWhiteTime(Math.max(0, Math.floor((data.clocks?.white ?? 0) / 1000)));
+                    setBlackTime(Math.max(0, Math.floor((data.clocks?.black ?? 0) / 1000)));
+
+                    syncFromBoard();
+                    setIsFetched(true);
+                    break;
+                }
+
+                case "move-successful": {
+                    // A broadcast without a position is unusable; ignoring it
+                    // keeps the last good board rather than blanking it.
+                    if (!data.fen) break;
+
+                    chessGameRef.current.load(data.fen);
+
+                    if (data.uci) {
+                        setLastMove({ from: data.uci.slice(0, 2), to: data.uci.slice(2, 4) });
+                    }
+                    if (data.clocks) {
+                        setWhiteTime(Math.max(0, Math.floor(data.clocks.white / 1000)));
+                        setBlackTime(Math.max(0, Math.floor(data.clocks.black / 1000)));
+                    }
+                    syncFromBoard();
+                    break;
+                }
+
+                case "chat-message":
+                    setChatMessages((previous) => [...previous, data as unknown as ChatMessage]);
+                    break;
+
+                case "draw-offered":
+                    setDrawOfferedBy(data.by ?? null);
+                    break;
+
+                case "draw-declined":
+                    setDrawOfferedBy(null);
+                    break;
+
+                case "game-over": {
+                    if (timerRef.current) clearInterval(timerRef.current);
+
+                    setResignModal(false);
+                    setIsResigning(false);
+                    setDrawOfferedBy(null);
+                    setStatus(data.result === "draw" ? "draw" : "completed");
+
+                    setGameOverInfo({
+                        isGameOver: true,
+                        reason: data.reason ?? "",
+                        termination: data.termination ?? null,
+                        result: data.result ?? null,
+                        winner: data.winner ?? null,
+                        color: data.color ?? null,
+                        resignedBy: data.resignedBy ?? null,
+                        pgn: data.pgn ?? null,
+                        ratings: data.ratings ?? null
+                    });
+                    setGameOverModal(true);
+                    break;
+                }
+
+                /**
+                 * The server rejected a move we had already applied
+                 * optimistically, so roll the local board back.
+                 */
+                case "illegal-move":
+                case "not-your-turn":
+                case "move-error": {
+                    chessGameRef.current.undo();
+                    syncFromBoard();
+                    setErrorMessage(
+                        message.action === "not-your-turn"
+                            ? "It is not your turn"
+                            : "That move was rejected"
+                    );
+                    break;
+                }
+
+                case "chat-error":
+                case "draw-error":
+                case "resign-error":
+                    setErrorMessage(data.error ?? "Something went wrong");
+                    break;
+
+                default:
+                    break;
+            }
+        },
+        [syncFromBoard, user?.id]
+    );
 
     useEffect(() => {
         if (!ws) return;
-        ws.addEventListener('message', handleMessage);
-
-        return () => ws.removeEventListener('message', handleMessage);
+        ws.addEventListener("message", handleMessage);
+        return () => ws.removeEventListener("message", handleMessage);
     }, [ws, handleMessage]);
 
-    useEffect(() => { activeColorRef.current = activeColor }, [activeColor]);
-    useEffect(() => { statusRef.current = status }, [status]);
+    // Ask for current state as soon as there is a live socket. This is what
+    // makes refreshing mid-game recoverable.
+    useEffect(() => {
+        if (!isConnected || !gameId) return;
+        sendMessage("join-game", { data: { gameId } });
+
+        return () => sendMessage("leave-game", { data: { gameId } });
+    }, [isConnected, gameId, sendMessage]);
 
     useEffect(() => {
-        moveStartRef.current = Date.now();
+        activeColorRef.current = activeColor;
     }, [activeColor]);
 
-    const onDrop = ({ sourceSquare, targetSquare }: PieceDropHandlerArgs) => {
-        if (!targetSquare) return false;
-        try {
-            const now = Date.now();
-            // const timeTakenSec = Math.round((now - moveStartRef.current) / 1000);
-            moveStartRef.current = now;
-
-            const move = chessGameRef.current.move({
-                from: sourceSquare,
-                to: targetSquare as string,
-                promotion: 'q'
-            });
-            if (!move) return false;
-
-            const uci = `${move.from}${move.to}${move.promotion || ''}`;
-
-            // optimistic UI updates
-            setChessPosition(chessGameRef.current.fen());
-            setLastMove((prev) => [ ...prev, { from: sourceSquare, to: targetSquare as string } ]);
-            // setMoveHistory(chessGameRef.current.history({ verbose: true }));
-            setActiveColor(chessGameRef.current.turn());
-
-            // tracking captured pieces
-            if (move.captured) {
-                setCapturedPieces((prev) => ({
-                    ...prev,
-                    [move.color === 'w' ? 'b' : 'w']: [
-                        ...prev[move.color === 'w' ? 'b' : 'w'],
-                        move.captured
-                    ]
-                }))
-            };
-
-            // let clockAfter = 0;
-            // if (activeColor === 'w') {
-            //     clockAfter = Math.max(0, whiteTime - timeTakenSec);
-            //     setWhiteTime(clockAfter);
-            // } else {
-            //     clockAfter = Math.max(0, blackTime - timeTakenSec);
-            //     setBlackTime(clockAfter);
-            // }
-
-            // if (chessGameRef.current.isCheckmate()) setStatus('checkmate');
-            // else if (chessGameRef.current.isCheck()) setStatus('check');
-            // else if (chessGameRef.current.isDraw()) setStatus('draw');
-            // else setStatus('playing');
-
-            // sending websocket related events to backend
-            // sendMessage('possible-move-made', {
-            //     userId: user?.id,
-            //     opponentId: opponentId,
-            //     data: {
-            //         gameId: gameId,
-            //         moveNumber: Math.ceil(chessGameRef.current.history().length / 2),
-            //         color: activeColor === 'w' ? 'white' : 'black',
-            //         san: move.san,
-            //         uci: `${move.from}${move.to}${move.promotion ?? ""}`,
-            //         fenAfter: chessGameRef.current.fen(),
-            //         timeTaken: timeTakenSec,
-            //         clockAfter: clockAfter,
-            //     }
-            // });
-
-            // sending the move info to the server
-            sendMessage('possible-move', {
-                data: {
-                    gameId: gameId,
-                    playerId: user?.id,
-                    uci: uci,
-                    color: activeColor
-                }
-            });
-
-            return true;
-        } catch (error) {
-            console.error('error while dropping a piece: ', error);
-            return false;
-        }
-    }
-
-    // the player shall be able to move pieces of the same color and also when it is only his/her turn
-    const canDragPiece = ({ piece }: PieceHandlerArgs) => piece.pieceType[0] === playerMetadata?.color;
-
     useEffect(() => {
-        const fetchGameMetadata = async () => {
-            // early return if user/accessToken is null
-            if (!user && !accessToken) return;
+        statusRef.current = status;
+    }, [status]);
+
+    // Clear a transient error after a moment so it does not stick around.
+    useEffect(() => {
+        if (!errorMessage) return;
+        const timer = setTimeout(() => setErrorMessage(null), 3000);
+        return () => clearTimeout(timer);
+    }, [errorMessage]);
+
+    const onDrop = useCallback(
+        ({ sourceSquare, targetSquare }: PieceDropHandlerArgs) => {
+            if (!targetSquare || role === "spectator") return false;
 
             try {
-                const response = await axios.post(
-                    `${config.DEV_BASE_URL}`,
-                    {
-                        action: "get-game-metadata",
-                        data: { gameId: gameId }
-                    },
-                    {
-                        headers: {
-                            "Content-Type": "application/json",
-                            "Authorization": `Bearer ${accessToken}`
-                        }
-                    }
-                );
+                const move = chessGameRef.current.move({
+                    from: sourceSquare,
+                    to: targetSquare,
+                    promotion: "q"
+                });
+                if (!move) return false;
 
-                if (response.status === 200) {
-                    const dta = response.data.metadata.game;
-                    const chatHistory = response.data.metadata.chatHistory;
-                    console.log('game metadata fetched: ', dta);
+                // Show the move immediately; the server's broadcast is the
+                // authority and corrects us if it disagrees.
+                setLastMove({ from: sourceSquare, to: targetSquare });
+                syncFromBoard();
 
-                    setWhiteTime(dta.whiteTimeLeft);
-                    setBlackTime(dta.blackTimeLeft);
-                    setGameType(dta.timeControl);
-                    setChessPosition(dta.currentFen);
-                    setStatus(dta.status);
-                    setOpponentId(dta.blackPlayerId !== user.id ? dta.blackPlayerId : dta.whitePlayerId );
-                    setIsFetched(true);
-                    setChatMessages(chatHistory);
+                if (move.captured) {
+                    const capturedFrom = move.color === "w" ? "b" : "w";
+                    setCapturedPieces((previous) => ({
+                        ...previous,
+                        [capturedFrom]: [...previous[capturedFrom], move.captured as string]
+                    }));
                 }
-            } catch (error) {
-                console.error('error while fetching game metadata: ', error);
+
+                sendMessage("possible-move", {
+                    data: {
+                        gameId,
+                        uci: `${move.from}${move.to}${move.promotion ?? ""}`
+                    }
+                });
+
+                return true;
+            } catch {
+                return false;
             }
-        }
+        },
+        [gameId, role, sendMessage, syncFromBoard]
+    );
 
-        fetchGameMetadata();
-    }, [gameId, accessToken, user]);
+    /** A player may only drag their own pieces, and only on their own turn. */
+    const canDragPiece = useCallback(
+        ({ piece }: PieceHandlerArgs) =>
+            role === "player" &&
+            playerColor !== null &&
+            piece.pieceType[0] === playerColor &&
+            activeColor === playerColor &&
+            status === "in_progress",
+        [activeColor, playerColor, role, status]
+    );
 
+    // Names and ratings are not part of the game socket payload, so they are
+    // still fetched over HTTP.
     useEffect(() => {
+        if (!opponentId || !user?.id || !accessToken) return;
+
+        const controller = new AbortController();
+
         const fetchPlayersMetadata = async () => {
-            // early return from the function if the opponent ID is null or absent
-            if (!opponentId || opponentId.length === 0) return;
             try {
                 const response = await axios.post(
                     `${config.DEV_BASE_URL}`,
                     {
                         action: "get-user-metadata",
-                        data: { userId: user?.id, opponentId: opponentId, gameId: gameId }
+                        data: { userId: user.id, opponentId, gameId }
                     },
                     {
                         headers: {
                             "Content-Type": "application/json",
-                            "Authorization": `Bearer ${accessToken}`
-                        }
+                            Authorization: `Bearer ${accessToken}`
+                        },
+                        signal: controller.signal
                     }
                 );
 
                 if (response.status === 200) {
-                    console.log("player's & opponent's metadata fetched successfully: ", response.data.metadata);
-                    const dta = response.data.metadata;
-                    setOpponentMetadata({
-                        ...dta.opponent,
-                        time: dta.opponent.color === 'w' ? whiteTime : blackTime
-                    });
-                    setPlayerMetadata({
-                        ...dta.player,
-                        time: dta.player.color === 'w' ? whiteTime : blackTime
-                    });
-                };
+                    const metadata = response.data.metadata;
+                    setOpponentMetadata(metadata.opponent);
+                    setPlayerMetadata(metadata.player);
+                }
             } catch (error) {
-                console.error('error while fetching user metadata: ', error);
+                if (!axios.isCancel(error)) {
+                    console.error("error while fetching user metadata: ", error);
+                }
             }
         };
 
+        void fetchPlayersMetadata();
+        return () => controller.abort();
+    }, [user?.id, accessToken, opponentId, gameId]);
 
-        fetchPlayersMetadata();
-    }, [user?.id, accessToken, opponentId, gameId])
-
+    /**
+     * Local countdown, purely for display. The server owns the real clock and
+     * corrects this on every move, so drift here can never decide a game.
+     */
     useEffect(() => {
         if (!isFetched) return;
 
         timerRef.current = setInterval(() => {
             if (statusRef.current !== "in_progress") {
-                clearInterval(timerRef.current!);
+                if (timerRef.current) clearInterval(timerRef.current);
                 return;
-            };
+            }
 
-            if (activeColorRef.current === 'w') {
-                setWhiteTime((t) => {
-                    if (t <= 1) {
-                        clearInterval(timerRef.current!);
-                        return 0;
-                    };
-
-                    return t-1;
-                });
-            } else if (activeColorRef.current === 'b') {
-                setBlackTime((t) => {
-                    if (t <= 1) {
-                        clearInterval(timerRef.current!);
-                        return 0;
-                    };
-
-                    return t-1;
-                });
-            };
+            const setter = activeColorRef.current === "w" ? setWhiteTime : setBlackTime;
+            setter((remaining) => Math.max(0, remaining - 1));
         }, 1000);
 
-        return () => clearInterval(timerRef.current!);
-    }, [isFetched]); // this hook fires only when the data is ready
+        return () => {
+            if (timerRef.current) clearInterval(timerRef.current);
+        };
+    }, [isFetched]);
 
     const sendChatMessage = useCallback(() => {
         const trimmed = chatInput.trim();
-        if (!trimmed || trimmed.length === 0) return;
-        if (trimmed.length > 120) return;
+        if (!trimmed || trimmed.length > 120) return;
 
-        sendMessage('send-chat', {
-            data: {
-                gameId,
-                senderId: user?.id,
-                message: trimmed,
-            }
-        });
+        sendMessage("send-chat", { data: { gameId, message: trimmed } });
+        setChatInput("");
+    }, [chatInput, gameId, sendMessage]);
 
-        setChatInput(''); // clear input immediately
-    }, [chatInput, gameId, sendMessage, user?.id]);
+    const offerDraw = useCallback(() => {
+        sendMessage("offer-draw", { data: { gameId } });
+    }, [gameId, sendMessage]);
+
+    const respondToDraw = useCallback(
+        (accept: boolean) => {
+            sendMessage("respond-draw", { data: { gameId, accept } });
+        },
+        [gameId, sendMessage]
+    );
+
+    const resign = useCallback(() => {
+        setIsResigning(true);
+        sendMessage("resign-request", { data: { gameId } });
+    }, [gameId, sendMessage]);
+
+    /** True when the opponent has an offer waiting on us. */
+    const hasIncomingDrawOffer = useMemo(
+        () => Boolean(drawOfferedBy && drawOfferedBy !== user?.id),
+        [drawOfferedBy, user?.id]
+    );
 
     return {
         gameId,
@@ -352,12 +468,15 @@ export const useGame = () => {
         chessPosition,
         setChessPosition,
         playerColor,
+        role,
         blackTime,
         whiteTime,
         capturedPieces,
         activeColor,
+        inCheck,
         moveHistory,
         status,
+        isRated,
         opponentMetadata,
         playerMetadata,
         onDrop,
@@ -374,6 +493,12 @@ export const useGame = () => {
         isResigning,
         setIsResigning,
         resignModal,
-        setResignModal
-    }
-}
+        setResignModal,
+        resign,
+        offerDraw,
+        respondToDraw,
+        drawOfferedBy,
+        hasIncomingDrawOffer,
+        errorMessage
+    };
+};

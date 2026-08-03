@@ -6,7 +6,9 @@
   "scripts": {
     "test": "vitest run",
     "test:watch": "vitest",
-    "dev": "tsx watch src/server.ts"
+    "check-types": "tsc --noEmit",
+    "dev": "tsx watch src/server.ts",
+    "start": "tsx src/server.ts"
   },
   "keywords": [],
   "author": "",
@@ -14,6 +16,8 @@
   "dependencies": {
     "@repo/auth": "workspace:^",
     "@repo/db": "workspace:^",
+    "@repo/rating": "workspace:^",
+    "@repo/redis": "workspace:^",
     "@repo/types": "workspace:^",
     "@repo/utils": "workspace:^",
     "chess.js": "^1.4.0",

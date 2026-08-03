@@ -6,6 +6,7 @@ import { useWebSocket } from "@/hooks/useWebSocket";
 import config from "@/infra/activeconfig";
 import { useAppSelector } from "@/redux/hook"
 import { logout } from "@/redux/slices/auth.slice";
+import { DEFAULT_TIME_CONTROL_KEY, TIME_CONTROLS } from "@repo/types/src/timeControls";
 import axios from "axios";
 import { Plus } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
@@ -24,7 +25,7 @@ const Home = () => {
   const dispatch = useDispatch();
   const navigate = useNavigate();
   const { user } = useAppSelector((state) => state.auth);
-  const { ws, sendMessage } = useWebSocket();
+  const { ws } = useWebSocket();
 
   const hasFetched = useRef<boolean>(false);
 
@@ -35,6 +36,7 @@ const Home = () => {
   const [data, setData] = useState<ActivityDay[]>([]);
 
   const [searchModalOpen, setSearchModalOpen] = useState<boolean>(false);
+  const [timeControl, setTimeControl] = useState<string>(DEFAULT_TIME_CONTROL_KEY);
 
   const handleLogout = async () => {
     setLoading(true);
@@ -62,9 +64,12 @@ const Home = () => {
     }
   };
 
+  /**
+   * Opening the modal is all this does now — the modal owns joining and
+   * leaving the queue, so closing it always releases the player's slot.
+   */
   const handleSearchPlayers = () => {
     if (!user || !ws) return;
-    sendMessage('join-match-making', { userId: user.id });
     setSearchModalOpen(true);
   };
 
@@ -146,6 +151,24 @@ const Home = () => {
                 <Plus className="w-4 shrink-0" />
                 <span>New Match</span>
               </button>
+
+              {/* Which pool the player queues into. */}
+              <label className="text-xs text-neutral-500 px-1 pt-1" htmlFor="time-control">
+                Time control
+              </label>
+              <select
+                id="time-control"
+                className="bg-neutral-800 text-neutral-300 text-sm px-2 py-1.5 rounded border-[0.3px] border-neutral-700 hover:cursor-pointer"
+                value={timeControl}
+                onChange={(event) => setTimeControl(event.target.value)}
+              >
+                {Object.entries(TIME_CONTROLS).map(([key, spec]) => (
+                  <option key={key} value={key}>
+                    {spec.label} · {spec.name}
+                  </option>
+                ))}
+              </select>
+
               <button
                 type="button"
                 className="text-left text-neutral-500 hover:cursor-pointer hover:bg-neutral-800 px-3 py-2 rounded transition"
@@ -211,7 +234,13 @@ const Home = () => {
         </div>
       )}
 
-      {searchModalOpen && <SearchPlayerModal setModalOpen={setSearchModalOpen} ws={ws} />}
+      {searchModalOpen && (
+        <SearchPlayerModal
+          setModalOpen={setSearchModalOpen}
+          ws={ws}
+          timeControl={timeControl}
+        />
+      )}
     </div>
   );
 };

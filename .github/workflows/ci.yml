@@ -1,0 +1,53 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# A newer push to the same branch makes an in-flight run redundant.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # The engine and DB packages read these at import time. They are never used to
+  # reach a real service in CI, but they must be present and non-empty.
+  ACCESS_TOKEN_SECRET_KEY: ci-access-secret
+  REFRESH_TOKEN_SECRET_KEY: ci-refresh-secret
+  DATABASE_URL: postgres://ci:ci@localhost:5432/ci
+
+jobs:
+  verify:
+    name: Lint, typecheck and test
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # No `version` input: the action reads it from the root package.json's
+      # `packageManager` field, and specifying it in both places is an error.
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # Packages consumed as built output (types, rating, engine) must exist
+      # before anything that imports them is typechecked.
+      - name: Build workspace packages
+        run: pnpm build
+
+      - name: Typecheck
+        run: pnpm check-types
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Test
+        run: pnpm test

@@ -5,13 +5,13 @@ import reactRefresh from 'eslint-plugin-react-refresh'
 import tseslint from 'typescript-eslint'
 import { defineConfig, globalIgnores } from 'eslint/config'
 
+// This file is ESM (the package sets "type": "module"), so `__dirname` does not
+// exist here — referencing it threw before ESLint could lint anything.
+const rootDir = import.meta.dirname
+
 export default defineConfig([
-  globalIgnores(['dist']),
+  globalIgnores(['dist', 'playwright-report', 'test-results']),
   {
-    parserOptions: {
-      tsconfigRootDir: __dirname,
-      project: ['./tsconfig.json'],
-    },
     files: ['**/*.{ts,tsx}'],
     extends: [
       js.configs.recommended,
@@ -22,6 +22,9 @@ export default defineConfig([
     languageOptions: {
       ecmaVersion: 2020,
       globals: globals.browser,
+      parserOptions: {
+        tsconfigRootDir: rootDir,
+      },
     },
   },
 ])
