@@ -1,0 +1,15 @@
+{
+  "compilerOptions": {
+    "outDir": "dist",
+    "declaration": true,
+    "module": "commonjs",
+    "target": "es2020",
+    "strict": true,
+    "skipLibCheck": true,
+    "isolatedModules": true,
+    "erasableSyntaxOnly": false,
+    "types": []
+  },
+  "include": ["src"],
+  "exclude": ["src/__tests__"]
+}

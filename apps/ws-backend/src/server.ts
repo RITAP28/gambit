@@ -1,34 +1,53 @@
-import { WebSocket, WebSocketServer } from "ws";
+import { WebSocketServer } from "ws";
+
 import config from "./infrastructure/activeconfig";
-import { handleConnection } from "./connection";
-import { Chess } from "chess.js";
+import { handleConnection, startHeartbeat } from "./connection";
+import { onFlagFall } from "./clock";
+import { concludeOnFlag } from "./services/gameConclusion.service";
+import { rehydrateAllActiveGames } from "./services/game.service";
+import { startCrossInstanceRelay } from "./utils/broadcastToGame";
+import { activeGames, AuthedSocket } from "./state";
 
-export interface GameState {
-    gameId: string;
-    whitePlayerId: string;
-    blackPlayerId: string;
+// Game state lives in ./state so that importing it does not start a server.
+export * from "./state";
 
-    chess: Chess,
-    activeColor: 'white' | 'black',
-    status: "waiting" | "in_progress" | "completed" | "abandoned" | "aborted" | "resigned" | "draw" | "timeout",
+const port = Number(config.PORT) || 8080;
 
-    lastMove: string;
-    lastMoveTime: number;
-    moveStartTime: number;
+// Wire the clock to the game-conclusion logic. Injected here rather than
+// imported inside ./clock so the timer module stays dependency-free.
+onFlagFall((game, flaggedColor) => {
+    void concludeOnFlag(game, flaggedColor);
+});
 
-    clocks: {
-        white: number;
-        black: number;
-    }
-}
-
-export const onlineUsers = new Map<string, WebSocket>();
-export const usersSearchingForMatch = new Map<string, WebSocket>();
-
-// keeping all the active games in memory
-export const activeGames = new Map<string, GameState>();
-
-const wss = new WebSocketServer({ port: Number(config.PORT) });
+const wss = new WebSocketServer({ port });
 wss.on("connection", handleConnection);
 
-console.log(`WS server running on port ${config.PORT}`);
+const stopHeartbeat = startHeartbeat(() => wss.clients as Set<AuthedSocket>);
+
+console.log(`WS server running on port ${port}`);
+
+// Games that were in flight when this process last stopped are restored rather
+// than abandoned.
+void rehydrateAllActiveGames().then((count) => {
+    if (count > 0) console.log(`[boot] restored ${count} in-progress game(s)`);
+});
+
+// No-op unless REDIS_URL is configured.
+void startCrossInstanceRelay();
+
+function shutdown(signal: string): void {
+    console.log(`[shutdown] received ${signal}, closing server`);
+    stopHeartbeat();
+
+    for (const game of activeGames.values()) {
+        if (game.flagTimer) clearTimeout(game.flagTimer);
+    }
+
+    wss.close(() => process.exit(0));
+
+    // Do not let a stuck socket hold the process open indefinitely.
+    setTimeout(() => process.exit(0), 5000).unref();
+}
+
+process.on("SIGTERM", () => shutdown("SIGTERM"));
+process.on("SIGINT", () => shutdown("SIGINT"));

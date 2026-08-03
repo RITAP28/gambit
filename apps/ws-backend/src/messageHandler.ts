@@ -1,463 +1,466 @@
 import { verifyAccessToken } from "@repo/auth/src/jwt/verify";
-import { WebSocket } from "ws";
-import { activeGames, GameState, onlineUsers, usersSearchingForMatch } from "./server";
-import { broadcastOnlineUsers, sendMessage } from "./connection";
-import { db, games, moves } from "@repo/db";
-import { Chess } from "chess.js";
-import { broadcastToGame } from "./utils/broadcastToGame";
+import { db, moves } from "@repo/db";
 import { MAX_MESSAGE_LENGTH } from "@repo/utils/src/constants";
-import { fetchUserSession } from "./services/user.service";
-import { endGame, insertChatMessage } from "./services/chat.service";
-import { fetchExistingGame, updateGameState } from "./services/game.service";
 
-interface ChatMessage {
-    action: string;
-    data: {
-        gameId: string;
-        senderId: string;
-        message: string;
-    };
+import {
+    activeGames,
+    AuthedSocket,
+    Color,
+    GameState,
+    onlineUsers,
+    opposite,
+    playerColor
+} from "./state";
+import { broadcastOnlineUsers } from "./connection";
+import { broadcastToGame, sendTo } from "./utils/broadcastToGame";
+import { applyMoveToClocks, scheduleFlagFall } from "./clock";
+import { fetchUserSession } from "./services/user.service";
+import { getChatHistory, insertChatMessage } from "./services/chat.service";
+import { rehydrateGame, updateGameState } from "./services/game.service";
+import { concludeGame, concludeOnFlag } from "./services/gameConclusion.service";
+
+/**
+ * Authenticates a socket and binds a user id to it.
+ *
+ * Everything downstream reads identity from `ws.userId`. Nothing may trust a
+ * user id supplied in a message body — the sender controls that field, so
+ * honouring it would let any connected client act as any other player.
+ */
+export async function handleUserConnection(ws: AuthedSocket, message: any): Promise<string | null> {
+    const { userId, accessToken } = message ?? {};
+
+    if (typeof userId !== "string" || typeof accessToken !== "string") {
+        sendTo(ws, "auth-error", { error: "missing-credentials" });
+        return null;
+    }
+
+    let session;
+    try {
+        session = await fetchUserSession(userId);
+    } catch (error) {
+        console.error("[auth] session lookup failed:", error);
+        sendTo(ws, "auth-error", { error: "server-error" });
+        return null;
+    }
+
+    if (!session?.refreshToken) {
+        sendTo(ws, "auth-error", { error: "no-session" });
+        return null;
+    }
+
+    let decoded;
+    try {
+        decoded = await verifyAccessToken(accessToken, session.refreshToken);
+    } catch (error) {
+        sendTo(ws, "auth-error", { error: "invalid-token" });
+        return null;
+    }
+
+    const authenticatedId = decoded.payload.userId;
+
+    // The token decides who this socket is. A mismatch means the caller is
+    // presenting someone else's id alongside their own token.
+    if (authenticatedId !== userId) {
+        sendTo(ws, "auth-error", { error: "identity-mismatch" });
+        return null;
+    }
+
+    // A second login for the same account supersedes the first; leaving the old
+    // socket in the map would send that user's moves to a stale connection.
+    const previous = onlineUsers.get(authenticatedId);
+    if (previous && previous !== ws) {
+        sendTo(previous, "session-superseded", { reason: "connected-elsewhere" });
+    }
+
+    ws.userId = authenticatedId;
+    onlineUsers.set(authenticatedId, ws);
+    broadcastOnlineUsers();
+
+    console.log(`[auth] user ${authenticatedId} connected`);
+
+    sendTo(ws, "connection-established", {
+        userId: authenticatedId,
+        accessToken: decoded.newAccessToken ?? accessToken,
+        message: "Successfully connected"
+    });
+
+    return authenticatedId;
 }
 
-export async function handleUserConnection(ws: WebSocket, message: any, currentUserId: string | null) {
-    const { userId, accessToken } = message;
+/**
+ * Resolves the game a request refers to and checks the caller is actually one
+ * of its two players. Returns null (after replying with an error) otherwise.
+ */
+async function requirePlayer(
+    ws: AuthedSocket,
+    gameId: unknown,
+    errorAction: string
+): Promise<{ game: GameState; userId: string; color: Color } | null> {
+    const userId = ws.userId;
+    if (!userId) {
+        sendTo(ws, errorAction, { error: "not-authenticated" });
+        return null;
+    }
 
-    const session = await fetchUserSession(userId);
-    const decoded = await verifyAccessToken(accessToken, session.refreshToken);
-    
-    onlineUsers.set(decoded.payload.userId, ws);
-    currentUserId = decoded.payload.userId;
-    broadcastOnlineUsers();
-    
-    console.log(`User ${userId} connected to the websocket`);
-    
-    // send confirmation
-    ws.send(JSON.stringify({
-        action: 'connection-established',
-        userId: userId,
-        accessToken: decoded.newAccessToken,
-        message: 'Successfully connected'
-    }));
-};
+    if (typeof gameId !== "string" || gameId.length === 0) {
+        sendTo(ws, errorAction, { error: "invalid-game-id" });
+        return null;
+    }
 
-export async function handleMatchPlayer(ws: WebSocket, message: any) {
-    // structure of the message to be received
-    // message = {
-    //     action: 'match-player',
-    //     userId: userId,
-    // }
-    const { userId } = message;
+    const game = activeGames.get(gameId) ?? (await rehydrateGame(gameId));
+    if (!game) {
+        sendTo(ws, errorAction, { error: "game-not-found" });
+        return null;
+    }
 
-    // adding user to the search queue/map or returning if it already exists
-    if (usersSearchingForMatch.has(userId)) return;
-    usersSearchingForMatch.set(userId, ws);
+    const color = playerColor(game, userId);
+    if (!color) {
+        sendTo(ws, errorAction, { error: "not-a-player" });
+        return null;
+    }
 
-    if (usersSearchingForMatch.size < 2) {
-        console.log('Waiting for opponent...');
-        return;
-    };
+    if (game.status !== "in_progress") {
+        sendTo(ws, errorAction, { error: "game-not-in-progress" });
+        return null;
+    }
 
-    const players = Array.from(usersSearchingForMatch.keys());
+    return { game, userId, color };
+}
 
-    const player1 = players[0];
-    const player2 = players[1];
+export async function handleMakeMove(ws: AuthedSocket, message: any): Promise<void> {
+    const data = message?.data ?? {};
+    const context = await requirePlayer(ws, data.gameId, "move-error");
+    if (!context) return;
 
-    const ws1 = usersSearchingForMatch.get(player1);
-    const ws2 = usersSearchingForMatch.get(player2);
-
-    // removing both users from the queue/map
-    usersSearchingForMatch.delete(player1);
-    usersSearchingForMatch.delete(player2);
-
-    console.log(`Match found: ${player1} vs ${player2}`);
-
-    // game can be created in the db as both the players have been matched
-    const newGame = (
-        await db
-            .insert(games)
-            .values({
-                whitePlayerId: player1,
-                blackPlayerId: player2,
-
-                timeControl: 'blitz',
-                timeLimitSecs: 300,
-                incrementSecs: 2,
-
-                status: 'in_progress',
-
-                initialFen: "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
-                currentFen: "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
-
-                whiteTimeLeft: 300,
-                blackTimeLeft: 300,
-
-                isRated: false,
-
-                startedAt: new Date(),
-                endedAt: null
-            })
-            .returning()
-    )[0];
-    console.log('new game created: ', newGame);
-
-    // creating a new game state in server's memory
-    const gameId = newGame.id;
-    const game: GameState = {
-        gameId: newGame.id,
-        whitePlayerId: player1,
-        blackPlayerId: player2,
-
-        chess: new Chess(),
-        activeColor: 'white',
-        status: 'in_progress',
-
-        lastMove: '',
-        lastMoveTime: 0,
-        moveStartTime: Date.now(),
-
-        clocks: {
-            white: 300 * 1000,  // sec
-            black: 300 * 1000   // sec
-        }
-    };
-
-    activeGames.set(gameId, game);
-    console.log('game id: ', gameId);
-    console.log('active games set for this game id: ', activeGames.has(gameId));
-
-    sendMessage(ws1, 'match-found', {
-        action: 'match-found',
-        userId: player1,
-        opponentId: player2,
-        gameId: newGame.id,
-        color: 'white'
-    });
-
-    sendMessage(ws2, 'match-found', {
-        action: 'match-found',
-        userId: player2,
-        opponentId: player1,
-        gameId: newGame.id,
-        color: 'black'
-    });
-};
-
-export async function handleMakeMove(ws: WebSocket, message: { action: string, data: { gameId: string, playerId: string, uci: string, color: 'w' | 'b' } }) {
-    const { action, data } = message;
-    if (action !== 'possible-move') return;
-
-    const gameId = data.gameId;
+    const { game, color } = context;
     const uci = data.uci;
 
-    const game = activeGames.get(gameId);
-    if (!game) {
-        console.log('sdc')
+    if (typeof uci !== "string" || uci.length < 4 || uci.length > 5) {
+        sendTo(ws, "move-error", { error: "malformed-move" });
         return;
     }
 
     const chess = game.chess;
+    const sideToMove: Color = chess.turn() === "w" ? "white" : "black";
 
-    // todo: turn validation: checking whose turn it is actually
-    const expectedColor = chess.turn() === 'w' ? 'white' : 'black';
-    const isThisPlayersTurn = (expectedColor === 'white' && game.whitePlayerId === data.playerId) || (expectedColor === 'black' && game.blackPlayerId === data.playerId);
-    if (!isThisPlayersTurn) {
-        // sending notification to the player's socket making the wrong move
-        ws.send(JSON.stringify({ action: 'not-your-turn', gameId }));
+    if (sideToMove !== color) {
+        sendTo(ws, "not-your-turn", { gameId: game.gameId });
         return;
-    };
+    }
+
+    const now = Date.now();
+    const updatedClocks = applyMoveToClocks(game, color, now);
+
+    // The mover's own clock expired before this move landed. Their opponent
+    // wins on time; the move itself is discarded.
+    if (updatedClocks[color] <= 0) {
+        game.clocks[color] = 0;
+        await concludeOnFlag(game, color);
+        return;
+    }
 
     let move;
     try {
-        // applying move via chess.js
         move = chess.move({
-            from: data.uci.slice(0,2),
-            to: data.uci.slice(2,4),
-            promotion: data.uci[4] ?? 'q'
+            from: uci.slice(0, 2),
+            to: uci.slice(2, 4),
+            promotion: uci[4] ?? "q"
         });
-    } catch (error) {
-        ws.send(JSON.stringify({ action: 'illegal-move', gameId: gameId }));
+    } catch {
+        sendTo(ws, "illegal-move", { gameId: game.gameId });
         return;
     }
 
-    // todo: clock management --> configuring the clocks to avoid any cheating based on time
-    const now = Date.now();
-    const timeTaken = now - game.moveStartTime;
-    console.log('time taken for the move: ', timeTaken);
-    const moveColor = move.color === 'w' ? 'white' : 'black';
-
-    const updatedClocks = {
-        white: moveColor === 'white' ? game.clocks.white - timeTaken : game.clocks.white,   // ms
-        black: moveColor === 'black' ? game.clocks.black - timeTaken : game.clocks.black    // ms
-    };
-
-    // checking for time-out meaning if time ran out for either of the players
-    if (updatedClocks.white <= 0 || updatedClocks.black <= 0) {
-        const loser = updatedClocks.white <= 0 ? 'white' : 'black';
-        broadcastToGame(gameId, {
-            action: 'time-out',
-            data: {
-                loser: loser,
-            }
-        });
+    if (!move) {
+        sendTo(ws, "illegal-move", { gameId: game.gameId });
         return;
-    };
+    }
 
-    // saving the move in the database
-    // rollback in-memory state on failure
+    const elapsed = now - game.moveStartTime;
+    const moveNumber = chess.history().length;
+
+    // Persist before advancing in-memory state, so a failed write can be undone
+    // without the two views of the game diverging.
     try {
-        await db
-            .insert(moves)
-            .values({
-                gameId: gameId,
-                moveNumber: chess.history().length,
-                color: move.color === 'w' ? "white" : "black",
-                san: move.san,
-                uci: data.uci,
-                fenAfter: chess.fen(),
-                timeTaken: Math.floor(timeTaken / 1000),    // seconds
-                clockAfter: move.color === 'w' ? Math.floor(updatedClocks.white / 1000) : Math.floor(updatedClocks.black / 1000)    // seconds
-            })
-            .returning();
+        await db.insert(moves).values({
+            gameId: game.gameId,
+            moveNumber,
+            color,
+            san: move.san,
+            uci,
+            fenAfter: chess.fen(),
+            timeTaken: elapsed,
+            clockAfter: Math.max(0, updatedClocks[color])
+        });
     } catch (error) {
         chess.undo();
-        ws.send(JSON.stringify({ action: 'server-error', gameId }));
-        console.error(`[handleMakeMove] DB insert error for game ${gameId}: `, error);
-        return;
-    };
-
-    // persisting first in the database above, then updating the in-memory state
-    activeGames.set(gameId, {
-        ...game,
-        activeColor: game.activeColor === 'white' ? 'black' : 'white',
-        clocks: updatedClocks,
-
-        // resetting the clock for the next player's turn
-        moveStartTime: now
-    });
-
-    // todo: game status validation --> checking whether there is a checkmate/draw (stalemate/three-fold-repetition)
-    if (chess.isCheckmate()) {
-        activeGames.set(gameId, { ...game, status: 'completed' });
-        await endGame(gameId, false, false, false, false, 'checkmate', data.playerId, data.color === 'w' ? 'white' : 'black');
-        broadcastToGame(gameId, {
-            action: 'game-over',
-            data: {
-                reason: 'checkmate',
-                winner: data.playerId,
-                color: data.color === 'w' ? 'white' : 'black', // winner color
-                resignedBy: null
-            }
-        });
-
-        // deleting the game from the memory within a 5 second window
-        setTimeout(() => activeGames.delete(gameId), 5000);
-        return;
-    } else if (chess.isDraw()) {
-        activeGames.set(gameId, { ...game, status: 'draw' });
-        const drawReason = chess.isStalemate() ? 'stalemate' 
-                        : chess.isThreefoldRepetition() ? 'threefold-repetition' 
-                        : chess.isInsufficientMaterial ? 'insufficient material' 
-                        : 'fifty-move rule';
-
-        await endGame(
-            gameId,
-            false,
-            true,
-            false,
-            false,
-            drawReason === 'stalemate' ? 'stalemate'
-            : drawReason === 'threefold-repetition' ? 'threefold_repetition' 
-            : drawReason === 'fifty-move rule' ? 'fifty_move_rule' 
-            : 'insufficient_material',
-            'completed',
-            null
-        );
-
-        broadcastToGame(gameId, {
-            action: 'game-over',
-            data: {
-                reason: drawReason,
-                winner: null,
-                color: null,
-                resignedBy: null
-            }
-        });
-
-        // deleting the game from the memory within a 5 second window
-        setTimeout(() => activeGames.delete(gameId), 5000);
+        sendTo(ws, "server-error", { gameId: game.gameId });
+        console.error(`[handleMakeMove] DB insert error for game ${game.gameId}:`, error);
         return;
     }
 
-    // updating game state inside the database
-    await updateGameState(gameId, chess.fen(), updatedClocks);
+    game.clocks = updatedClocks;
+    game.activeColor = opposite(color);
+    game.moveStartTime = now;
+    game.lastMove = uci;
+    game.lastMoveTime = now;
 
-    // broadcasting information to both the players to keep them in sync
-    broadcastToGame(gameId, {
-        action: 'move-successful',
+    // A move answers any outstanding draw offer with an implicit decline.
+    if (game.drawOfferedBy && game.drawOfferedBy !== ws.userId) {
+        game.drawOfferedBy = null;
+        broadcastToGame(game.gameId, { action: "draw-declined", data: { by: ws.userId } });
+    }
+
+    if (chess.isCheckmate()) {
+        await concludeGame(game, {
+            winnerColor: color,
+            termination: "checkmate",
+            reason: "checkmate"
+        });
+        return;
+    }
+
+    if (chess.isDraw() || chess.isStalemate()) {
+        const termination = chess.isStalemate()
+            ? "stalemate"
+            : chess.isThreefoldRepetition()
+              ? "threefold_repetition"
+              : chess.isInsufficientMaterial()
+                ? "insufficient_material"
+                : "fifty_move_rule";
+
+        await concludeGame(game, {
+            winnerColor: null,
+            termination,
+            reason: termination.replace(/_/g, " ")
+        });
+        return;
+    }
+
+    // The side to move changed, so the flag timer belongs to the other player.
+    scheduleFlagFall(game);
+
+    try {
+        await updateGameState(game.gameId, chess.fen(), updatedClocks);
+    } catch (error) {
+        // The move is already durable in the moves table; a stale snapshot on
+        // the games row is recoverable by replay and must not abort the game.
+        console.error(`[handleMakeMove] snapshot update failed for ${game.gameId}:`, error);
+    }
+
+    broadcastToGame(game.gameId, {
+        action: "move-successful",
         data: {
             fen: chess.fen(),
-            uci: uci,
+            uci,
             san: move.san,
-            moveNumber: chess.history().length,
-
-            // keeping clients in sync with updated clocks
+            moveNumber,
+            activeColor: game.activeColor,
+            inCheck: chess.inCheck(),
             clocks: updatedClocks
         }
     });
-};
+}
 
-export async function handleRegisterMove(ws: WebSocket, message: any) {
-    const { userId, opponentId, data } : { userId: string, opponentId: string, data: typeof moves.$inferInsert } = message;
+export async function handleChat(ws: AuthedSocket, message: any): Promise<void> {
+    const data = message?.data ?? {};
+    const userId = ws.userId;
 
-    const userSocket = onlineUsers.get(userId);
-    const opponentSocket = onlineUsers.get(opponentId);
+    if (!userId) {
+        sendTo(ws, "chat-error", { error: "not-authenticated" });
+        return;
+    }
 
-    console.log('type: ', typeof data.timeTaken);
-    console.log('type: ', typeof data.clockAfter);
+    const gameId = data.gameId;
+    if (typeof gameId !== "string") {
+        sendTo(ws, "chat-error", { error: "invalid-game-id" });
+        return;
+    }
 
-    try {
-        const existingGame = await fetchExistingGame(data.gameId);
-        if (!existingGame) return;
-
-        const move = (await db.insert(moves).values({ ...data, createdAt: new Date() }).returning())[0];
-        if (!move) {
-            // sending errors to both the sockets
-            userSocket.send(JSON.stringify({
-                action: 'db-insertion-error',
-                message: 'some error occured while insertion'
-            }));
-            opponentSocket.send(JSON.stringify({
-                action: 'db-insertion-error',
-                message: 'some error occured while insertion'
-            }));
-        };
-
-        // sending this message to the opponent socket to apply the same changes on his/her screen as well
-        opponentSocket.send(JSON.stringify({
-            action: 'move-successful',
-            message: 'successful move by the user',
-            move: move
-        }));
-    } catch (error) {
-        console.error('error while registering a move: ', error);
-        userSocket.send(JSON.stringify({
-            action: 'internal-server-error',
-            message: 'error'
-        }));
-        opponentSocket.send(JSON.stringify({
-            action: 'internal-server-error',
-            message: 'error'
-        }));
-    };
-};
-
-export const handleChat = async (ws: WebSocket, payload: ChatMessage) => {
-    const { data } = payload;
-    const { gameId, senderId, message } = data;
-
-    // 1. Game existence check
-    const game = activeGames.get(gameId);
+    const game = activeGames.get(gameId) ?? (await rehydrateGame(gameId));
     if (!game) {
-        ws.send(JSON.stringify({ action: 'chat-error', error: 'game-not-found' }));
+        sendTo(ws, "chat-error", { error: "game-not-found" });
         return;
     }
 
-    // 2. Sender must be one of the two players — no outsiders
-    const isPlayer = game.whitePlayerId === senderId || game.blackPlayerId === senderId;
-    if (!isPlayer) {
-        ws.send(JSON.stringify({ action: 'chat-error', error: 'not-a-player' }));
+    // Spectators may watch but not speak.
+    if (!playerColor(game, userId)) {
+        sendTo(ws, "chat-error", { error: "not-a-player" });
         return;
     }
 
-    // 3. Sanitize — trim and enforce length
-    const trimmed = message.trim();
-    if (!trimmed || trimmed.length === 0) return;
+    const trimmed = typeof data.message === "string" ? data.message.trim() : "";
+    if (trimmed.length === 0) return;
+
     if (trimmed.length > MAX_MESSAGE_LENGTH) {
-        ws.send(JSON.stringify({
-            action: 'chat-error',
-            error: 'message-too-long',
-            max: MAX_MESSAGE_LENGTH
-        }));
+        sendTo(ws, "chat-error", { error: "message-too-long", max: MAX_MESSAGE_LENGTH });
         return;
     }
 
-    // 4. Persist
     let saved;
     try {
-        saved = await insertChatMessage(gameId, senderId, trimmed);
-    } catch (err) {
-        console.error(`[handleChat] DB insert failed for game ${gameId}:`, err);
-        ws.send(JSON.stringify({ action: 'chat-error', error: 'server-error' }));
+        // senderId comes from the socket, never the payload.
+        saved = await insertChatMessage(gameId, userId, trimmed);
+    } catch (error) {
+        console.error(`[handleChat] DB insert failed for game ${gameId}:`, error);
+        sendTo(ws, "chat-error", { error: "server-error" });
         return;
     }
 
-    // 5. Broadcast to both players
     broadcastToGame(gameId, {
-        action: 'chat-message',
+        action: "chat-message",
         data: {
             id: saved.id,
             gameId,
-            senderId,
+            senderId: userId,
             message: trimmed,
-            createdAt: saved.createdAt,
+            createdAt: saved.createdAt
         }
     });
-};
+}
 
-export async function handleRequestResign (ws: WebSocket, message: { action: string, data: { gameId: string, resignedBy: string } }) {
-    const { gameId, resignedBy } = message.data;
+export async function handleRequestResign(ws: AuthedSocket, message: any): Promise<void> {
+    const data = message?.data ?? {};
+    const context = await requirePlayer(ws, data.gameId, "resign-error");
+    if (!context) return;
 
-    // as the user has requested resignation from the game, the metadata shall be updated in the database
-    // the game shall be deleted from the server memory
+    const { game, userId, color } = context;
 
-    // checking whether game exists or not
-    const game = activeGames.get(gameId);
+    await concludeGame(game, {
+        winnerColor: opposite(color),
+        termination: "resignation",
+        reason: "resigned",
+        resignedBy: userId
+    });
+}
+
+export async function handleDrawOffer(ws: AuthedSocket, message: any): Promise<void> {
+    const data = message?.data ?? {};
+    const context = await requirePlayer(ws, data.gameId, "draw-error");
+    if (!context) return;
+
+    const { game, userId } = context;
+
+    if (game.drawOfferedBy === userId) {
+        sendTo(ws, "draw-error", { error: "already-offered" });
+        return;
+    }
+
+    // Offering into a standing offer from the opponent is an acceptance.
+    if (game.drawOfferedBy && game.drawOfferedBy !== userId) {
+        await acceptDraw(game);
+        return;
+    }
+
+    game.drawOfferedBy = userId;
+    broadcastToGame(game.gameId, { action: "draw-offered", data: { by: userId } });
+}
+
+export async function handleDrawResponse(ws: AuthedSocket, message: any): Promise<void> {
+    const data = message?.data ?? {};
+    const context = await requirePlayer(ws, data.gameId, "draw-error");
+    if (!context) return;
+
+    const { game, userId } = context;
+
+    if (!game.drawOfferedBy) {
+        sendTo(ws, "draw-error", { error: "no-offer" });
+        return;
+    }
+
+    // Only the player who did not make the offer can answer it.
+    if (game.drawOfferedBy === userId) {
+        sendTo(ws, "draw-error", { error: "cannot-answer-own-offer" });
+        return;
+    }
+
+    if (data.accept === true) {
+        await acceptDraw(game);
+        return;
+    }
+
+    game.drawOfferedBy = null;
+    broadcastToGame(game.gameId, { action: "draw-declined", data: { by: userId } });
+}
+
+async function acceptDraw(game: GameState): Promise<void> {
+    game.drawOfferedBy = null;
+    await concludeGame(game, {
+        winnerColor: null,
+        termination: "agreement",
+        reason: "draw by agreement"
+    });
+}
+
+/**
+ * Sends a reconnecting player (or a new spectator) everything needed to render
+ * a game already in progress.
+ */
+export async function handleJoinGame(ws: AuthedSocket, message: any): Promise<void> {
+    const data = message?.data ?? {};
+    const userId = ws.userId;
+
+    if (!userId) {
+        sendTo(ws, "join-error", { error: "not-authenticated" });
+        return;
+    }
+
+    const gameId = data.gameId;
+    if (typeof gameId !== "string") {
+        sendTo(ws, "join-error", { error: "invalid-game-id" });
+        return;
+    }
+
+    const game = activeGames.get(gameId) ?? (await rehydrateGame(gameId));
     if (!game) {
-        ws.send(JSON.stringify({ action: 'resign-error', error: 'game-not-found' }));
-        return;
-    };
-
-    // whether player is real or not
-    const isPlayer = game.whitePlayerId === resignedBy || game.blackPlayerId === resignedBy;
-    if (!isPlayer) {
-        ws.send(JSON.stringify({ action: 'resign-error', error: 'not-a-player' }))
-    }
-
-    // game status must be in-progress
-    if (game.status !== 'in_progress') {
-        ws.send(JSON.stringify({ action: 'resign-error', error: 'game not in-progress anymore' }));
-        return;
-    };
-
-    const gameWinner = game.whitePlayerId === resignedBy ? game.blackPlayerId : game.whitePlayerId;
-    const winnerColor = game.whitePlayerId === resignedBy ? 'black' : 'white'; // opposite color wins
-
-    // persisting to db
-    try {
-        await endGame(gameId, true, false, false, false, 'resignation', gameWinner, winnerColor);
-    } catch (err) {
-        console.error(`[handleRequestResign] DB update failed for game ${gameId}:`, err);
-        ws.send(JSON.stringify({ action: 'resign-error', error: 'server-error' }));
+        sendTo(ws, "join-error", { error: "game-not-found" });
         return;
     }
 
-    // updating the in-memory status of the game so that further moves are not entertained
-    activeGames.set(gameId, {
-        ...game,
-        status: 'resigned'
-    });
+    const color = playerColor(game, userId);
+    if (!color) game.spectators.add(ws);
 
-    // broadcasting the message to both the users
-    broadcastToGame(gameId, {
-        action: 'game-over',
-        data: {
-            reason: 'resigned',
-            winner: gameWinner,
-            color: winnerColor,
-            resignedBy,
+    // Charge the player on move for the time spent while this client was away,
+    // so a reconnect cannot be used to stop the clock.
+    const elapsed = Date.now() - game.moveStartTime;
+    const liveClocks = {
+        ...game.clocks,
+        [game.activeColor]: game.clocks[game.activeColor] - elapsed
+    };
+
+    let chatHistory: Awaited<ReturnType<typeof getChatHistory>> = [];
+    if (color) {
+        try {
+            chatHistory = await getChatHistory(gameId);
+        } catch (error) {
+            console.error(`[handleJoinGame] chat history failed for ${gameId}:`, error);
         }
-    });
+    }
 
-    // cleaning up memory before exiting the function
-    setTimeout(() => activeGames.delete(gameId), 5000);
-};
+    sendTo(ws, "game-state", {
+        gameId,
+        fen: game.chess.fen(),
+        pgn: game.chess.pgn(),
+        history: game.chess.history({ verbose: true }),
+        activeColor: game.activeColor,
+        yourColor: color,
+        role: color ? "player" : "spectator",
+        whitePlayerId: game.whitePlayerId,
+        blackPlayerId: game.blackPlayerId,
+        timeControl: game.timeControl,
+        incrementMs: game.incrementMs,
+        isRated: game.isRated,
+        inCheck: game.chess.inCheck(),
+        drawOfferedBy: game.drawOfferedBy ?? null,
+        clocks: liveClocks,
+        chatHistory,
+        spectatorCount: game.spectators.size
+    });
+}
+
+export function handleLeaveGame(ws: AuthedSocket, message: any): void {
+    const gameId = message?.data?.gameId;
+    if (typeof gameId !== "string") return;
+
+    activeGames.get(gameId)?.spectators.delete(ws);
+}

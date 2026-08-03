@@ -1,16 +1,10 @@
 import { db, users } from "@repo/db";
 import { eq } from "drizzle-orm";
-import rateLimit from "express-rate-limit";
 import * as bcrypt from 'bcrypt';
 import z from "zod";
 
-export const loginLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 5, // Limit each IP to 5 login attempts per windowMs
-  message: "Too many login attempts, please try again later",
-  standardHeaders: true,
-  legacyHeaders: false,
-});
+// Rate limiting lives in middlewares/rateLimit.middleware.ts. It has to be
+// applied on the router — a limiter defined next to a handler is never invoked.
 
 export const loginErrors = {
     MISSING_FIELDS: "All fields are required",

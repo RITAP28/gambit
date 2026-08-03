@@ -1,0 +1,20 @@
+{
+  "name": "@repo/rating",
+  "version": "1.0.0",
+  "description": "Glicko-2 rating engine",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "@types/node": "^25.3.2",
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.0"
+  }
+}

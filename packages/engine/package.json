@@ -1,0 +1,24 @@
+{
+  "name": "@repo/engine",
+  "version": "1.0.0",
+  "description": "Stockfish UCI wrapper and game analysis",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "chess.js": "^1.4.0",
+    "stockfish": "^18.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^25.3.2",
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.0"
+  }
+}

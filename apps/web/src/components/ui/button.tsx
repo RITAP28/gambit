@@ -61,4 +61,6 @@ function Button({
   )
 }
 
-export { Button, buttonVariants }
+// Only the component is exported: exporting the variant helper alongside it
+// breaks Fast Refresh for this module, and nothing outside uses it.
+export { Button }

@@ -1,23 +1,19 @@
-import { useGame } from '@/hooks/useGame';
-import { useWebSocket } from '@/hooks/useWebSocket';
 import { X } from 'lucide-react';
 import React from 'react'
 
 interface IResignModalProps {
-    gameId: string;
-    playerId: string;
+    isResigning: boolean;
+    onConfirm: () => void;
     setModalOpen: React.Dispatch<React.SetStateAction<boolean>>;
 }
 
-const ResignModal = ({ gameId, setModalOpen, playerId }: IResignModalProps) => {
-  const { sendMessage } = useWebSocket();
-  const { isResigning, setIsResigning } = useGame();
-
-  const handleResign = () => {
-    setIsResigning(true);
-    sendMessage('resign-request', { data: { gameId: gameId, resignedBy: playerId } });
-  }
-
+/**
+ * State and the resign action are passed in rather than pulled from useGame().
+ * Calling that hook here created a second, independent game instance with its
+ * own socket listeners, so the flag this modal set was never the one the board
+ * was reading.
+ */
+const ResignModal = ({ isResigning, onConfirm, setModalOpen }: IResignModalProps) => {
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
         <div className="bg-neutral-700 text-white dark:bg-zinc-900 rounded-lg shadow-xl w-full max-w-sm max-h-[90vh] overflow-y-auto p-2">
@@ -50,7 +46,7 @@ const ResignModal = ({ gameId, setModalOpen, playerId }: IResignModalProps) => {
                 <button
                     type="button"
                     className="tracking-tight text-sm px-3 py-1.5 bg-red-700 hover:bg-red-600 hover:cursor-pointer rounded-sm transition duration-300 ease-in-out disabled:opacity-50 disabled:cursor-not-allowed min-w-20 flex items-center justify-center"
-                    onClick={handleResign}
+                    onClick={onConfirm}
                     disabled={isResigning}
                 >
                     {isResigning ? <span className="animate-pulse">Resigning...</span> : 'Resign'}
